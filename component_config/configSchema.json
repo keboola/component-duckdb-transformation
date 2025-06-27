@@ -1,19 +1,23 @@
 {
   "type": "object",
-  "title": "extractor configuration",
-  "required": [
-    "print_hello"
-  ],
+  "required": ["queries"],
   "properties": {
-    "print_hello": {
-      "type": "boolean",
-      "title": "Print Hello",
-      "propertyOrder": 1
-    },
-    "debug": {
-      "type": "boolean",
-      "title": "Debug",
-      "propertyOrder": 2
+    "queries": {
+      "type": "array",
+      "title": "SQL Queries",
+      "description": "List of SQL statements to execute in order.",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "format": "editor",
+        "options": {
+          "editor": {
+            "mode": "text/x-sql",
+            "lineNumbers": true,
+            "lint": true
+          }
+        }
+      }
     }
   }
 }
