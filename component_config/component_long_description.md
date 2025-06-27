@@ -1,0 +1,1 @@
+keboola.duckdb-transformation long description
