@@ -1,0 +1,79 @@
+{
+  "parameters": {
+    "blocks": [
+      {
+        "name": "Block 1",
+        "codes": [
+          {
+            "name": "Sliced",
+            "script": [
+              "-- Export sliced as one table\nCREATE VIEW 'out-table' AS (\n SELECT * FROM sliced \n);"
+            ]
+          },
+          {
+            "name": "Days",
+            "script": [
+              "CREATE VIEW 'week' AS (\nSELECT *\nFROM days\nWHERE id::INT <= 5);",
+              "CREATE VIEW 'weekend' AS (\nSELECT *\nFROM days\nWHERE id::INT > 5);"
+            ]
+          }
+        ]
+      },
+      {
+        "name": "Block 2",
+        "codes": [
+          {
+            "name": "Join",
+            "script": [
+              "CREATE VIEW 'joined' AS (\nSELECT * \nFROM sliced \nLEFT JOIN days USING (id));"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "storage": {
+    "output": {
+      "tables": [
+        {
+          "destination": "out.c-out.out-table",
+          "source": "out-table"
+        },
+        {
+          "destination": "out.c-out.week",
+          "source": "week"
+        },
+        {
+          "destination": "out.c-out.weekend",
+          "source": "weekend"
+        },
+        {
+          "destination": "out.c-out.joined",
+          "source": "joined"
+        }
+      ]
+    },
+    "input": {
+      "tables": [
+        {
+          "source": "in.c-days.csv",
+          "destination": "days",
+          "where_column": "",
+          "where_values": [],
+          "where_operator": "eq",
+          "columns": [],
+          "keep_internal_timestamp_column": false
+        },
+        {
+          "source": "in.c-sliced",
+          "destination": "sliced",
+          "where_column": "",
+          "where_values": [],
+          "where_operator": "eq",
+          "columns": [],
+          "keep_internal_timestamp_column": false
+        }
+      ]
+    }
+  }
+}
