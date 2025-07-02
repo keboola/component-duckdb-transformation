@@ -7,14 +7,14 @@
           {
             "name": "Sliced",
             "script": [
-              "-- Export sliced as one table\nCREATE VIEW 'out-table' AS (\n SELECT * FROM sliced \n);"
+              "-- Export sliced as one table\nCREATE VIEW 'out-table.csv' AS (\n SELECT * FROM sliced \n);"
             ]
           },
           {
             "name": "Days",
             "script": [
-              "CREATE VIEW 'week' AS (\nSELECT *\nFROM days\nWHERE id::INT <= 5);",
-              "CREATE VIEW 'weekend' AS (\nSELECT *\nFROM days\nWHERE id::INT > 5);"
+              "CREATE VIEW 'week.csv' AS (\nSELECT *\nFROM days\nWHERE id::INT <= 5);",
+              "CREATE VIEW 'weekend.csv' AS (\nSELECT *\nFROM days\nWHERE id::INT > 5);"
             ]
           }
         ]
@@ -25,7 +25,7 @@
           {
             "name": "Join",
             "script": [
-              "CREATE VIEW 'joined' AS (\nSELECT * \nFROM sliced \nLEFT JOIN days USING (id));"
+              "CREATE VIEW 'joined.csv' AS (\nSELECT * \nFROM sliced \nLEFT JOIN days USING (id));"
             ]
           }
         ]
@@ -37,19 +37,19 @@
       "tables": [
         {
           "destination": "out.c-out.out-table",
-          "source": "out-table"
+          "source": "out-table.csv"
         },
         {
           "destination": "out.c-out.week",
-          "source": "week"
+          "source": "week.csv"
         },
         {
           "destination": "out.c-out.weekend",
-          "source": "weekend"
+          "source": "weekend.csv"
         },
         {
           "destination": "out.c-out.joined",
-          "source": "joined"
+          "source": "joined.csv"
         }
       ]
     },

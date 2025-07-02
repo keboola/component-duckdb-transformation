@@ -105,7 +105,7 @@ class Component(ComponentBase):
                 )
 
                 out_table = self.create_out_table_definition(
-                    name=f"{table.source}.csv",
+                    name=table.source,
                     schema=schema,
                     primary_key=table.primary_key,
                     incremental=table.incremental,
