@@ -1,104 +1,169 @@
 import logging
-import os
-import shutil
+import time
 from collections import OrderedDict
+from csv import DictReader
 
 import duckdb
 from keboola.component.base import ComponentBase
-from keboola.component.dao import ColumnDefinition, BaseType, SupportedDataTypes, TableMetadata
+from keboola.component.dao import BaseType, ColumnDefinition, SupportedDataTypes, TableDefinition, TableMetadata
 from keboola.component.exceptions import UserException
 
 import duckdb_client
 from configuration import Configuration
 
-MANDATORY_PARS = ["queries"]
 
 class Component(ComponentBase):
+    def __init__(self):
+        super().__init__()
+        self.params = Configuration(**self.configuration.parameters)
+        self._connection = duckdb_client.init_connection(self.params.threads, self.params.max_memory_mb)
 
-        def __init__(self):
-            super().__init__()
-            self.validate_configuration_parameters(MANDATORY_PARS)
-            self._connection = duckdb_client.init_connection()
-            self.params = Configuration(**self.configuration.parameters)
+    def run(self):
+        for table in self.get_input_tables_definitions():
+            self.create_view(table)
 
-        def run(self):
-            logging.info("Running DuckDB transformation...")
+        self.process_queries()
+        self.export_tables()
+        self.generate_out_files_manifests()
+        self._connection.close()
 
-            # Execute SQL queries
-            queries=self.params.queries
-            for i, query in enumerate(queries):
-                logging.info(f"Executing query {i + 1}/{len(queries)}")
-                try:
-                    self._connection.execute(query)
-                except Exception as e:
-                    raise UserException(f"Error in query {i + 1}: {str(e)}")
+    def process_queries(self):
+        total_scripts = sum(len(code.script) for block in self.params.blocks for code in block.codes)
+        counter = 1
+        for block in self.params.blocks:
+            logging.info(f"Processing block: {block.name}")
+            for code in block.codes:
+                logging.info(f"Executing code: {code.name}")
+                for script in code.script:
+                    try:
+                        start_time = time.time()
+                        self._connection.execute(script)
+                        logging.info(
+                            f"Query {counter} / {total_scripts} finished in {time.time() - start_time:.2f} seconds"
+                        )
+                        counter += 1
+                    except Exception as e:
+                        raise UserException(f"Error during executing the query '{code.name}': {str(e)}")
 
-            self.export_tables()
-            # TODO tady se to musí domyslet, je potřeba nechat možnost exportovat cokoliv do jakéhokoliv souboru a typu možná necháme export na query?
-            self.export_files()
+    def create_view(self, in_table: TableDefinition) -> None:
+        if in_table.is_sliced:
+            path = f"{in_table.full_path}/*.csv"
+        else:
+            path = in_table.full_path
 
-            logging.info("DuckDB transformation completed successfully.")
+        try:
+            self._connection.read_csv(
+                path_or_buffer=path,
+                delimiter=in_table.delimiter or ",",
+                quotechar=in_table.enclosure or '"',
+                header=self._has_header_in_file(in_table),
+                names=self._get_column_names(in_table),
+                dtype={key: value.data_types.get("base").dtype for key, value in in_table.schema.items()},
+            ).to_view(in_table.name.removesuffix(".csv"))
 
-        def export_tables(self) -> None:
-            out_tables = self.configuration.tables_output_mapping
+            logging.debug(f"Table {in_table.name} created.")
+        except duckdb.IOException as e:
+            raise UserException(f"Error creating view for table {in_table.name}: {e}")
+        except Exception as e:
+            raise UserException(f"Unexpected error creating view for table {in_table.name}: {e}")
 
-            for table_params in out_tables:
+    @staticmethod
+    def _has_header_in_file(t: TableDefinition):
+        is_input_mapping_manifest = t.stage == "in"
+        if t.is_sliced:
+            has_header = False
+        elif t.column_names and not is_input_mapping_manifest:
+            has_header = False
+        else:
+            has_header = True
+        return has_header
 
-                table_meta = self._connection.execute(f"""DESCRIBE TABLE '{table_params.source}';""").fetchall()
-                schema = OrderedDict((c[0], ColumnDefinition(data_types=BaseType(dtype=self.convert_base_types(c[1]))))
-                                     for c in table_meta)
+    @staticmethod
+    def _get_column_names(t: TableDefinition) -> list[str]:
+        """
+        Get table header from the file or from the manifest
+        """
+        header = None
+        if t.is_sliced or t.column_names:
+            header = t.column_names
+        else:
+            with open(t.full_path, encoding="utf-8") as f:
+                reader = DictReader(f, lineterminator="\n", delimiter=t.delimiter, quotechar=t.enclosure)
+                header = reader.fieldnames
 
-                tm = TableMetadata()
-                tm.add_column_data_types({c[0]: self.convert_base_types(c[1]) for c in table_meta})
+        return header
 
-                out_table = self.create_out_table_definition(f"{table_params.source}.csv",
-                                                             schema=schema,
-                                                             primary_key=table_params.primary_key,
-                                                             incremental=table_params.incremental,
-                                                             destination=table_params.destination,
-                                                             table_metadata=tm
-                                                             )
+    def export_tables(self) -> None:
+        for table in self.configuration.tables_output_mapping:
+            try:
+                table_meta = self._connection.execute(f"""DESCRIBE TABLE '{table.source}';""").fetchall()
+                schema = OrderedDict(
+                    {
+                        c[0]: ColumnDefinition(data_types=BaseType(dtype=self.convert_base_types(c[1])))
+                        for c in table_meta
+                    }
+                )
 
-                try:
-                    self._connection.execute(f'''COPY "{table_params.source}" TO "{out_table.full_path}"
+                out_table = self.create_out_table_definition(
+                    name=f"{table.source}.csv",
+                    schema=schema,
+                    primary_key=table.primary_key,
+                    incremental=table.incremental,
+                    destination=table.destination,
+                )
+
+                self._connection.execute(f'''COPY "{table.source}" TO "{out_table.full_path}"
                                                         (HEADER, DELIMITER ',', FORCE_QUOTE *)''')
-                except duckdb.duckdb.ConversionException as e:
-                    raise UserException(f"Error during query execution: {e}")
 
-                self.write_manifest(out_table)
-                self._connection.close()
+            except duckdb.CatalogException as e:
+                raise UserException(f"Can't find table defined in output mapping {table.source}: {e}")
 
-        def export_files(self) -> None:
-            out_files = self.configuration.files_output_mapping
+            except duckdb.IOException as e:
+                raise UserException(f"Error exporting table {table.source}: {e}")
 
-            for files_params in out_files:
+            except Exception as e:
+                raise UserException(f"Unexpected error exporting table {table.source}: {e}")
 
-                out_file = self.create_out_file_definition(f"{files_params.source}")
+            self.write_manifest(out_table)
 
-                try:
-                    self._connection.execute(f'''COPY "{files_params.source}" TO "{out_file.full_path}"
-                                                        (HEADER, DELIMITER ',', FORCE_QUOTE *)''')
-                except duckdb.duckdb.ConversionException as e:
-                    raise UserException(f"Error during query execution: {e}")
+    def generate_out_files_manifests(self) -> None:
+        for file in self.configuration.files_output_mapping:
+            out_file = self.create_out_file_definition(
+                name=file.source,
+                is_permanent=file.is_permanent,
+                tags=file.tags,
+            )
+            self.write_manifest(out_file)
 
-                self._connection.close()
+    @staticmethod
+    def convert_base_types(dtype: str) -> SupportedDataTypes:
+        if dtype in [
+            "TINYINT",
+            "SMALLINT",
+            "INTEGER",
+            "BIGINT",
+            "HUGEINT",
+            "UTINYINT",
+            "USMALLINT",
+            "UINTEGER",
+            "UBIGINT",
+            "UHUGEINT",
+        ]:
+            return SupportedDataTypes.INTEGER
+        elif dtype in ["REAL", "DECIMAL"]:
+            return SupportedDataTypes.NUMERIC
+        elif dtype == "DOUBLE":
+            return SupportedDataTypes.FLOAT
+        elif dtype == "BOOLEAN":
+            return SupportedDataTypes.BOOLEAN
+        elif dtype in ["TIMESTAMP", "TIMESTAMP WITH TIME ZONE"]:
+            return SupportedDataTypes.TIMESTAMP
+        elif dtype == "DATE":
+            return SupportedDataTypes.DATE
+        else:
+            return SupportedDataTypes.STRING
 
-        def convert_base_types(self, dtype: str) -> SupportedDataTypes:
-            if dtype in ['TINYINT', 'SMALLINT', 'INTEGER', 'BIGINT', 'HUGEINT',
-                         'UTINYINT', 'USMALLINT', 'UINTEGER', 'UBIGINT', 'UHUGEINT']:
-                return SupportedDataTypes.INTEGER
-            elif dtype in ['REAL', 'DECIMAL']:
-                return SupportedDataTypes.NUMERIC
-            elif dtype == 'DOUBLE':
-                return SupportedDataTypes.FLOAT
-            elif dtype == 'BOOLEAN':
-                return SupportedDataTypes.BOOLEAN
-            elif dtype in ['TIMESTAMP', 'TIMESTAMP WITH TIME ZONE']:
-                return SupportedDataTypes.TIMESTAMP
-            elif dtype == 'DATE':
-                return SupportedDataTypes.DATE
-            else:
-                return SupportedDataTypes.STRING
+
 """
         Main entrypoint
 """
