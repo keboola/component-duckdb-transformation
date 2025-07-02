@@ -5,7 +5,7 @@ from csv import DictReader
 
 import duckdb
 from keboola.component.base import ComponentBase
-from keboola.component.dao import BaseType, ColumnDefinition, SupportedDataTypes, TableDefinition, TableMetadata
+from keboola.component.dao import BaseType, ColumnDefinition, SupportedDataTypes, TableDefinition
 from keboola.component.exceptions import UserException
 
 import duckdb_client
