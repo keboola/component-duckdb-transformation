@@ -17,7 +17,7 @@ class Block(BaseModel):
 class Configuration(BaseModel):
     blocks: list[Block] = Field(default_factory=Block)
     threads: int = 1
-    max_memory_mb: int = 1024
+    max_memory_mb: int = 768
     dtypes_infer: bool = False
     debug: bool = False
 

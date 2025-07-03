@@ -113,6 +113,7 @@ class Component(ComponentBase):
                     primary_key=table.primary_key,
                     incremental=table.incremental,
                     destination=table.destination,
+                    has_header=True,
                 )
 
                 self._connection.execute(f'''COPY "{table.source}" TO "{out_table.full_path}"
