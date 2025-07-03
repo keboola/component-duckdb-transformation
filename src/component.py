@@ -46,10 +46,13 @@ class Component(ComponentBase):
                         raise UserException(f"Error during executing the query '{code.name}': {str(e)}")
 
     def create_view(self, in_table: TableDefinition) -> None:
+        path = in_table.full_path
         if in_table.is_sliced:
             path = f"{in_table.full_path}/*.csv"
-        else:
-            path = in_table.full_path
+
+        dtype = None
+        if not self.params.dtypes_infer:
+            dtype = {key: value.data_types.get("base").dtype for key, value in in_table.schema.items()}
 
         try:
             self._connection.read_csv(
@@ -58,7 +61,7 @@ class Component(ComponentBase):
                 quotechar=in_table.enclosure or '"',
                 header=self._has_header_in_file(in_table),
                 names=self._get_column_names(in_table),
-                dtype={key: value.data_types.get("base").dtype for key, value in in_table.schema.items()},
+                dtype=dtype,
             ).to_view(in_table.name.removesuffix(".csv"))
 
             logging.debug(f"Table {in_table.name} created.")

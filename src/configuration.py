@@ -18,6 +18,7 @@ class Configuration(BaseModel):
     blocks: list[Block] = Field(default_factory=Block)
     threads: int = 1
     max_memory_mb: int = 1024
+    dtypes_infer: bool = False
     debug: bool = False
 
     def __init__(self, **data):
