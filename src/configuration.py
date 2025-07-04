@@ -1,11 +1,24 @@
 import logging
-from pydantic import BaseModel, Field, ValidationError, field_validator
+
 from keboola.component.exceptions import UserException
+from pydantic import BaseModel, Field, ValidationError
+
+
+class Code(BaseModel):
+    name: str
+    script: list[str]
+
+
+class Block(BaseModel):
+    name: str
+    codes: list[Code] = Field(default_factory=list)
 
 
 class Configuration(BaseModel):
-    print_hello: bool
-    api_token: str = Field(alias="#api_token")
+    blocks: list[Block] = Field(default_factory=list)
+    threads: int = 1
+    max_memory_mb: int = 768
+    dtypes_infer: bool = False
     debug: bool = False
 
     def __init__(self, **data):
@@ -17,9 +30,3 @@ class Configuration(BaseModel):
 
         if self.debug:
             logging.debug("Component will run in Debug mode")
-
-    @field_validator('api_token')
-    def token_must_be_uppercase(cls, v):
-        if not v.isupper():
-            raise UserException('API token must be uppercase')
-        return v
