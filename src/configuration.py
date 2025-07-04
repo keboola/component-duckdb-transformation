@@ -11,11 +11,11 @@ class Code(BaseModel):
 
 class Block(BaseModel):
     name: str
-    codes: list[Code] = Field(default_factory=Code)
+    codes: list[Code] = Field(default_factory=list)
 
 
 class Configuration(BaseModel):
-    blocks: list[Block] = Field(default_factory=Block)
+    blocks: list[Block] = Field(default_factory=list)
     threads: int = 1
     max_memory_mb: int = 768
     dtypes_infer: bool = False
