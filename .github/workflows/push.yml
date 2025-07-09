@@ -3,7 +3,7 @@ on: [ push ]
 concurrency: ci-${{ github.ref }} # to avoid tag collisions in the ECR
 env:
   # repository variables:
-  KBC_DEVELOPERPORTAL_APP: "keboola.duckdb-transformation" # replace with your component id
+  KBC_DEVELOPERPORTAL_APP: "keboola.duckdb-transformation-s3" # replace with your component id
   KBC_DEVELOPERPORTAL_VENDOR: "keboola" # replace with your vendor
   DOCKERHUB_USER: ${{ secrets.DOCKERHUB_USER }}
   KBC_DEVELOPERPORTAL_USERNAME: ${{ vars.KBC_DEVELOPERPORTAL_USERNAME }}
@@ -181,7 +181,7 @@ jobs:
           app_id: ${{ env.KBC_DEVELOPERPORTAL_APP }}
           username: ${{ env.KBC_DEVELOPERPORTAL_USERNAME }}
           password: ${{ secrets.KBC_DEVELOPERPORTAL_PASSWORD }}
-          tag: ${{ needs.push_event_info.outputs.app_image_tag }}
+          tag: "0.0.1"
           push_latest: ${{ needs.push_event_info.outputs.is_deploy_ready }}
           source_image: ${{ env.KBC_DEVELOPERPORTAL_APP }}
 
@@ -193,7 +193,7 @@ jobs:
       - push_event_info
       - build
       - push
-    if: needs.push_event_info.outputs.is_deploy_ready == 'true'
+    #if: needs.push_event_info.outputs.is_deploy_ready == 'true'  # TODO
     runs-on: ubuntu-latest
     steps:
       - name: Set Developer Portal Tag
@@ -203,7 +203,7 @@ jobs:
           app_id: ${{ env.KBC_DEVELOPERPORTAL_APP }}
           username: ${{ env.KBC_DEVELOPERPORTAL_USERNAME }}
           password: ${{ secrets.KBC_DEVELOPERPORTAL_PASSWORD }}
-          tag: ${{ needs.push_event_info.outputs.app_image_tag }}
+          tag: "0.0.1"
 
   update_developer_portal_properties:
     name: Developer Portal Properties Update
@@ -214,7 +214,7 @@ jobs:
       - build
       - push
     runs-on: ubuntu-latest
-    if: needs.push_event_info.outputs.is_deploy_ready == 'true'
+    #if: needs.push_event_info.outputs.is_deploy_ready == 'true'  # TODO
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
