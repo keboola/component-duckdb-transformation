@@ -20,6 +20,8 @@ class Configuration(BaseModel):
     max_memory_mb: int = 768
     dtypes_infer: bool = False
     debug: bool = False
+    s3_staging: bool = False
+    persistent_db: bool = False
 
     def __init__(self, **data):
         try:

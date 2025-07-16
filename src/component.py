@@ -1,3 +1,5 @@
+import os
+import json
 import logging
 import time
 from collections import OrderedDict
@@ -16,10 +18,14 @@ class Component(ComponentBase):
     def __init__(self):
         super().__init__()
         self.params = Configuration(**self.configuration.parameters)
-        self._connection = duckdb_client.init_connection(self.params.threads, self.params.max_memory_mb)
+        self._connection = duckdb_client.init_connection(
+            self.params.threads,
+            self.params.max_memory_mb,
+            os.path.join(self.data_folder_path, "out", "files", "duck.db" if self.params.persistent_db else ":memory:"),
+        )
 
     def run(self):
-        for table in self.get_input_tables_definitions():
+        for table in self.get_input_tables_definitions(orphaned_manifests=True):
             self.create_view(table)
 
         self.process_queries()
@@ -46,6 +52,32 @@ class Component(ComponentBase):
                         raise UserException(f"Error during executing the query '{code.name}': {str(e)}")
 
     def create_view(self, in_table: TableDefinition) -> None:
+        if self.params.s3_staging:
+            s3 = json.load(
+                open(os.path.join(self.data_folder_path, "in", "tables", f"{in_table.name}.csv.manifest"))
+            ).get("s3", {})
+
+            self._connection.execute(
+                f"""CREATE SECRET creds_{in_table.name} (
+                            TYPE S3,
+                            REGION '{s3.get("region")}',
+                            KEY_ID '{s3.get("credentials", {}).get("access_key_id")}',
+                            SECRET '{s3.get("credentials", {}).get("secret_access_key")}',
+                            SESSION_TOKEN '{s3.get("credentials", {}).get("session_token")}'
+                            );
+                       """
+            )
+
+            manifest = self._connection.execute(
+                f"FROM read_json('s3://{s3.get('bucket')}/{s3.get('key')}')"
+            ).fetchone()[0]
+
+            files = [f.get("url") for f in manifest]
+
+            self._connection.execute(f"""CREATE VIEW '{in_table.name}' AS FROM read_csv({files})""")
+
+            return
+
         path = in_table.full_path
         if in_table.is_sliced:
             path = f"{in_table.full_path}/*.csv"
