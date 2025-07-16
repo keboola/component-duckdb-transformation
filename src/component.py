@@ -21,7 +21,11 @@ class Component(ComponentBase):
         self._connection = duckdb_client.init_connection(
             self.params.threads,
             self.params.max_memory_mb,
-            os.path.join(self.data_folder_path, "out", "files", "duck.db" if self.params.persistent_db else ":memory:"),
+            (
+                os.path.join(self.data_folder_path, "out", "files", "duck.db")
+                if self.params.persistent_db
+                else ":memory:"
+            ),
         )
 
     def run(self):
