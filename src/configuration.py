@@ -1,7 +1,12 @@
 import logging
-
+from enum import Enum
 from keboola.component.exceptions import UserException
 from pydantic import BaseModel, Field, ValidationError
+
+
+class Materialize(str, Enum):
+    table = "TABLE"
+    view = "VIEW"
 
 
 class Code(BaseModel):
@@ -22,6 +27,7 @@ class Configuration(BaseModel):
     debug: bool = False
     s3_staging: bool = False
     persistent_db: bool = False
+    materialize: Materialize = Materialize.view
 
     def __init__(self, **data):
         try:

@@ -62,7 +62,7 @@ class Component(ComponentBase):
             ).get("s3", {})
 
             self._connection.execute(
-                f"""CREATE SECRET creds_{in_table.name} (
+                f"""CREATE OR REPLACE SECRET (
                             TYPE S3,
                             REGION '{s3.get("region")}',
                             KEY_ID '{s3.get("credentials", {}).get("access_key_id")}',
@@ -76,9 +76,9 @@ class Component(ComponentBase):
                 f"FROM read_json('s3://{s3.get('bucket')}/{s3.get('key')}')"
             ).fetchone()[0]
 
-            files = [f.get("url") for f in manifest]
+            f = [f.get("url") for f in manifest]
 
-            self._connection.execute(f"""CREATE VIEW '{in_table.name}' AS FROM read_csv({files})""")
+            self._connection.execute(f"CREATE {self.params.materialize.value} '{in_table.name}'AS FROM read_csv({f})")
 
             return
 
