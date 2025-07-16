@@ -11,7 +11,12 @@ def init_connection(threads, max_memory, db_path) -> DuckDBPyConnection:
     Returns connection to temporary DuckDB database
     """
     os.makedirs(DUCK_DB_DIR, exist_ok=True)
-    config = {"temp_directory": DUCK_DB_DIR, "threads": threads, "max_memory": f"{max_memory}MB"}
+    config = {
+        "temp_directory": DUCK_DB_DIR,
+        "threads": threads,
+        "max_memory": f"{max_memory}MB",
+        "extension_directory": os.path.join(DUCK_DB_DIR, "extensions"),
+    }
     conn = duckdb.connect(database=db_path, config=config)
 
     return conn
