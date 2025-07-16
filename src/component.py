@@ -78,7 +78,9 @@ class Component(ComponentBase):
 
             f = [f.get("url") for f in manifest]
 
-            self._connection.execute(f"CREATE {self.params.materialize.value} '{in_table.name}'AS FROM read_csv({f})")
+            self._connection.execute(f"""
+            CREATE {self.params.materialize.value} '{in_table.name}'AS
+            FROM read_csv({f}, column_names = {in_table.column_names})""")
 
             return
 
