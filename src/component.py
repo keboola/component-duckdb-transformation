@@ -4,6 +4,8 @@ import logging
 import time
 from collections import OrderedDict
 from csv import DictReader
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
 
 import duckdb
 from keboola.component.base import ComponentBase
@@ -65,6 +67,7 @@ class Component(ComponentBase):
                                     KEY_ID '{s3.get("credentials", {}).get("access_key_id")}',
                                     SECRET '{s3.get("credentials", {}).get("secret_access_key")}',
                                     SESSION_TOKEN '{s3.get("credentials", {}).get("session_token")}'
+                                    --,SCOPE 's3://{s3.get('bucket')}'
                                     );
                                """
                     )
@@ -138,7 +141,16 @@ class Component(ComponentBase):
         return header
 
     def export_tables(self) -> None:
-        for table in self.configuration.tables_output_mapping:
+        async def export_tables_async():
+            loop = asyncio.get_event_loop()
+            with ThreadPoolExecutor() as executor:
+                tasks = [
+                    loop.run_in_executor(executor, self._export_table, table)
+                    for table in self.configuration.tables_output_mapping
+                ]
+                await asyncio.gather(*tasks)
+
+        def _export_table(table):
             try:
                 table_meta = self._connection.execute(f"""DESCRIBE TABLE '{table.source}';""").fetchall()
                 schema = OrderedDict(
@@ -170,6 +182,9 @@ class Component(ComponentBase):
                 raise UserException(f"Unexpected error exporting table {table.source}: {e}")
 
             self.write_manifest(out_table)
+
+        self._export_table = _export_table
+        asyncio.run(export_tables_async())
 
     def generate_out_files_manifests(self) -> None:
         for file in self.configuration.files_output_mapping:
