@@ -21,16 +21,12 @@ class Component(ComponentBase):
         self._connection = duckdb_client.init_connection(
             self.params.threads,
             self.params.max_memory_mb,
-            (
-                os.path.join(self.data_folder_path, "out", "files", "duck.db")
-                if self.params.persistent_db
-                else ":memory:"
-            ),
+            os.path.join(self.data_folder_path, "out", "files", ".duck.db"),
         )
 
     def run(self):
         for table in self.get_input_tables_definitions(orphaned_manifests=True):
-            self.create_view(table)
+            self.load_in_table(table)
 
         self.process_queries()
         self.export_tables()
@@ -55,34 +51,40 @@ class Component(ComponentBase):
                     except Exception as e:
                         raise UserException(f"Error during executing the query '{code.name}': {str(e)}")
 
-    def create_view(self, in_table: TableDefinition) -> None:
-        if self.params.s3_staging:
-            s3 = json.load(
-                open(os.path.join(self.data_folder_path, "in", "tables", f"{in_table.name}.csv.manifest"))
-            ).get("s3", {})
+    def load_in_table(self, in_table: TableDefinition) -> None:
+        if not in_table.full_path:  # if path missing, it's s3 staging
+            for kind in ["parquet", "csv"]:
+                manifest_path = os.path.join(self.data_folder_path, "in", "tables", f"{in_table.name}.{kind}.manifest")
+                if os.path.exists(manifest_path):
+                    s3 = json.load(open(manifest_path)).get("s3", {})
 
-            self._connection.execute(
-                f"""CREATE OR REPLACE SECRET (
-                            TYPE S3,
-                            REGION '{s3.get("region")}',
-                            KEY_ID '{s3.get("credentials", {}).get("access_key_id")}',
-                            SECRET '{s3.get("credentials", {}).get("secret_access_key")}',
-                            SESSION_TOKEN '{s3.get("credentials", {}).get("session_token")}'
-                            );
-                       """
-            )
+                    self._connection.execute(
+                        f"""CREATE OR REPLACE SECRET (
+                                    TYPE S3,
+                                    REGION '{s3.get("region")}',
+                                    KEY_ID '{s3.get("credentials", {}).get("access_key_id")}',
+                                    SECRET '{s3.get("credentials", {}).get("secret_access_key")}',
+                                    SESSION_TOKEN '{s3.get("credentials", {}).get("session_token")}'
+                                    );
+                               """
+                    )
 
-            manifest = self._connection.execute(
-                f"FROM read_json('s3://{s3.get('bucket')}/{s3.get('key')}')"
-            ).fetchone()[0]
+                    manifest = self._connection.execute(
+                        f"FROM read_json('s3://{s3.get('bucket')}/{s3.get('key')}')"
+                    ).fetchone()[0]
 
-            f = [f.get("url") for f in manifest]
+                    f = [f.get("url") for f in manifest]
 
-            self._connection.execute(f"""
-            CREATE {self.params.materialize.value} '{in_table.name}'AS
-            FROM read_csv({f}, column_names = {in_table.column_names})""")
+                    if kind == "csv":
+                        read = f"read_csv({f}, column_names={in_table.column_names})"
+                    else:
+                        read = f"read_parquet({f})"
 
-            return
+                    self._connection.execute(f"""
+                    CREATE OR REPLACE TABLE '{in_table.name}'AS
+                    FROM {read}""")
+
+                    return
 
         path = in_table.full_path
         if in_table.is_sliced:
@@ -93,6 +95,7 @@ class Component(ComponentBase):
             dtype = {key: value.data_types.get("base").dtype for key, value in in_table.schema.items()}
 
         try:
+            self._connection.execute(f'DROP TABLE IF EXISTS "{in_table.name.removesuffix(".csv")}"')
             self._connection.read_csv(
                 path_or_buffer=path,
                 delimiter=in_table.delimiter or ",",
@@ -100,13 +103,13 @@ class Component(ComponentBase):
                 header=self._has_header_in_file(in_table),
                 names=self._get_column_names(in_table),
                 dtype=dtype,
-            ).to_view(in_table.name.removesuffix(".csv"))
+            ).to_table(in_table.name.removesuffix(".csv"))
 
             logging.debug(f"Table {in_table.name} created.")
         except duckdb.IOException as e:
-            raise UserException(f"Error creating view for table {in_table.name}: {e}")
+            raise UserException(f"Error importing table {in_table.name}: {e}")
         except Exception as e:
-            raise UserException(f"Unexpected error creating view for table {in_table.name}: {e}")
+            raise UserException(f"Unexpected error importing table table {in_table.name}: {e}")
 
     @staticmethod
     def _has_header_in_file(t: TableDefinition):
