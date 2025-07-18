@@ -182,6 +182,8 @@ class Component(ComponentBase):
 
     @staticmethod
     def convert_base_types(dtype: str) -> SupportedDataTypes:
+        dtype = dtype.split('(')[0]
+
         if dtype in [
             "TINYINT",
             "SMALLINT",
