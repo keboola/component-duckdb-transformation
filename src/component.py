@@ -29,10 +29,12 @@ class Component(ComponentBase):
         for table in self.get_input_tables_definitions(orphaned_manifests=True):
             self.load_in_table(table)
         logging.debug(f"Input tables loaded in {time.time() - start_time:.2f} seconds")
+        self.debug_log()
 
         start_time = time.time()
         self.process_queries()
         logging.debug(f"All queries processed in {time.time() - start_time:.2f} seconds")
+        self.debug_log()
 
         start_time = time.time()
         self.export_tables()
@@ -40,6 +42,18 @@ class Component(ComponentBase):
 
         self.generate_out_files_manifests()
         self._connection.close()
+
+    def debug_log(self):
+        if self.params.debug:
+            q = [
+                "SELECT database_name, table_name, has_primary_key, estimated_size, index_count FROM duckdb_tables();",
+                "SELECT path, round(size/10**6)::INT as 'size_MB' FROM duckdb_temporary_files();",
+                """SELECT tag, round(memory_usage_bytes/10**6)::INT as 'mem_MB',
+                       round(temporary_storage_bytes/10**6)::INT as 'storage_MB' FROM duckdb_memory();""",
+            ]
+
+            for query in q:
+                logging.debug(self._connection.sql(query).show())
 
     def process_queries(self):
         total_scripts = sum(len(code.script) for block in self.params.blocks for code in block.codes)
@@ -190,7 +204,7 @@ class Component(ComponentBase):
 
     @staticmethod
     def convert_base_types(dtype: str) -> SupportedDataTypes:
-        dtype = dtype.split('(')[0]
+        dtype = dtype.split("(")[0]
 
         if dtype in [
             "TINYINT",
