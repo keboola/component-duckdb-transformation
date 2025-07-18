@@ -106,6 +106,9 @@ class Component(ComponentBase):
                     CREATE OR REPLACE TABLE '{in_table.name}'AS
                     FROM {read}""")
 
+                    table_meta = self._connection.execute(f"""DESCRIBE TABLE '{in_table.name}';""").fetchall()
+                    logging.debug(f"Table {in_table.name} created with following dtypes: {[c[1] for c in table_meta]}")
+
                     return
 
         path = in_table.full_path
