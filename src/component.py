@@ -25,11 +25,19 @@ class Component(ComponentBase):
         )
 
     def run(self):
+        start_time = time.time()
         for table in self.get_input_tables_definitions(orphaned_manifests=True):
             self.load_in_table(table)
+        logging.debug(f"Input tables loaded in {time.time() - start_time:.2f} seconds")
 
+        start_time = time.time()
         self.process_queries()
+        logging.debug(f"All queries processed in {time.time() - start_time:.2f} seconds")
+
+        start_time = time.time()
         self.export_tables()
+        logging.debug(f"Output tables exported in {time.time() - start_time:.2f} seconds")
+
         self.generate_out_files_manifests()
         self._connection.close()
 
@@ -44,7 +52,7 @@ class Component(ComponentBase):
                     try:
                         start_time = time.time()
                         self._connection.execute(script)
-                        logging.info(
+                        logging.debug(
                             f"Query {counter} / {total_scripts} finished in {time.time() - start_time:.2f} seconds"
                         )
                         counter += 1
