@@ -72,6 +72,8 @@ class Component(ComponentBase):
                             f"Result:\n{res}"
                         )
                         counter += 1
+                    except AttributeError:
+                        logging.info("Query did not return any result.")
                     except Exception as e:
                         raise UserException(f"Error during executing the query '{code.name}': {str(e)}")
 
@@ -100,7 +102,7 @@ class Component(ComponentBase):
 
                 suffix = files[0].split(".")[-1]
 
-                if suffix == "csv":
+                if suffix in ["csv", "gz"]:
                     read = f"read_csv({files}, column_names={in_table.column_names})"
                 elif suffix == "parquet":
                     read = f"read_parquet({files})"
