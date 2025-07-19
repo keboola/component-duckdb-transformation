@@ -1,4 +1,5 @@
 import os
+import shutil
 import json
 import logging
 import time
@@ -18,11 +19,11 @@ class Component(ComponentBase):
     def __init__(self):
         super().__init__()
         self.params = Configuration(**self.configuration.parameters)
-        self._connection = duckdb_client.init_connection(
-            self.params.threads,
-            self.params.max_memory_mb,
-            os.path.join(self.data_folder_path, "out", "files", ".duck.db"),
-        )
+        db_in_path = os.path.join(self.data_folder_path, "in", "files", ".duck.db")
+        db_out_path = os.path.join(self.data_folder_path, "out", "files", ".duck.db")
+        if os.path.exists(db_in_path):
+            shutil.move(db_in_path, db_out_path)
+        self._conn = duckdb_client.init_connection(self.params.threads, self.params.max_memory_mb, db_out_path)
 
     def run(self):
         start_time = time.time()
@@ -41,7 +42,7 @@ class Component(ComponentBase):
         logging.debug(f"Output tables exported in {time.time() - start_time:.2f} seconds")
 
         self.generate_out_files_manifests()
-        self._connection.close()
+        self._conn.close()
 
     def debug_log(self):
         if self.params.debug:
@@ -53,7 +54,7 @@ class Component(ComponentBase):
             ]
 
             for query in q:
-                logging.debug(self._connection.sql(query).show())
+                logging.debug(self._conn.sql(query).show())
 
     def process_queries(self):
         total_scripts = sum(len(code.script) for block in self.params.blocks for code in block.codes)
@@ -65,51 +66,55 @@ class Component(ComponentBase):
                 for script in code.script:
                     try:
                         start_time = time.time()
-                        self._connection.execute(script)
+                        res = self._conn.execute(script).fetchall()
                         logging.debug(
-                            f"Query {counter} / {total_scripts} finished in {time.time() - start_time:.2f} seconds"
+                            f"Query {counter} / {total_scripts} finished in {time.time() - start_time:.2f} seconds\n"
+                            f"Result:\n{res}"
                         )
                         counter += 1
                     except Exception as e:
                         raise UserException(f"Error during executing the query '{code.name}': {str(e)}")
 
     def load_in_table(self, in_table: TableDefinition) -> None:
-        if not in_table.full_path:  # if path missing, it's s3 staging
-            for kind in ["parquet", "csv"]:
-                manifest_path = os.path.join(self.data_folder_path, "in", "tables", f"{in_table.name}.{kind}.manifest")
-                if os.path.exists(manifest_path):
-                    s3 = json.load(open(manifest_path)).get("s3", {})
+        if not in_table.full_path:  # if the full_path is missing, it's s3 staging
+            in_mapping = self.configuration.tables_input_mapping
+            path = [table for table in in_mapping if table.source == in_table.id][0].full_path
 
-                    self._connection.execute(
-                        f"""CREATE OR REPLACE SECRET (
-                                    TYPE S3,
-                                    REGION '{s3.get("region")}',
-                                    KEY_ID '{s3.get("credentials", {}).get("access_key_id")}',
-                                    SECRET '{s3.get("credentials", {}).get("secret_access_key")}',
-                                    SESSION_TOKEN '{s3.get("credentials", {}).get("session_token")}'
-                                    );
-                               """
-                    )
+            if os.path.exists(f"{path}.manifest"):
+                s3 = json.load(open(f"{path}.manifest")).get("s3", {})
 
-                    manifest = self._connection.execute(
-                        f"FROM read_json('s3://{s3.get('bucket')}/{s3.get('key')}')"
-                    ).fetchone()[0]
+                self._conn.execute(
+                    f"""CREATE OR REPLACE SECRET (
+                                TYPE S3,
+                                REGION '{s3.get("region")}',
+                                KEY_ID '{s3.get("credentials", {}).get("access_key_id")}',
+                                SECRET '{s3.get("credentials", {}).get("secret_access_key")}',
+                                SESSION_TOKEN '{s3.get("credentials", {}).get("session_token")}'
+                                );
+                           """
+                )
 
-                    f = [f.get("url") for f in manifest]
+                manifest = self._conn.sql(f"FROM read_json('s3://{s3.get('bucket')}/{s3.get('key')}')").fetchone()[0]
 
-                    if kind == "csv":
-                        read = f"read_csv({f}, column_names={in_table.column_names})"
-                    else:
-                        read = f"read_parquet({f})"
+                files = [f.get("url") for f in manifest]
 
-                    self._connection.execute(f"""
-                    CREATE OR REPLACE TABLE '{in_table.name}'AS
-                    FROM {read}""")
+                suffix = files[0].split(".")[-1]
 
-                    table_meta = self._connection.execute(f"""DESCRIBE TABLE '{in_table.name}';""").fetchall()
-                    logging.debug(f"Table {in_table.name} created with following dtypes: {[c[1] for c in table_meta]}")
+                if suffix == "csv":
+                    read = f"read_csv({files}, column_names={in_table.column_names})"
+                elif suffix == "parquet":
+                    read = f"read_parquet({files})"
+                else:
+                    raise UserException(f"Unsupported file format: {suffix}")
 
-                    return
+                self._conn.execute(f"""
+                CREATE OR REPLACE TABLE '{in_table.name}'AS
+                FROM {read}""")
+
+                table_meta = self._conn.execute(f"""DESCRIBE TABLE '{in_table.name}';""").fetchall()
+                logging.debug(f"Table {in_table.name} created with following dtypes: {[c[1] for c in table_meta]}")
+
+                return
 
         path = in_table.full_path
         if in_table.is_sliced:
@@ -120,8 +125,8 @@ class Component(ComponentBase):
             dtype = {key: value.data_types.get("base").dtype for key, value in in_table.schema.items()}
 
         try:
-            self._connection.execute(f'DROP TABLE IF EXISTS "{in_table.name.removesuffix(".csv")}"')
-            self._connection.read_csv(
+            self._conn.execute(f'DROP TABLE IF EXISTS "{in_table.name.removesuffix(".csv")}"')
+            self._conn.read_csv(
                 path_or_buffer=path,
                 delimiter=in_table.delimiter or ",",
                 quotechar=in_table.enclosure or '"',
@@ -165,7 +170,7 @@ class Component(ComponentBase):
     def export_tables(self) -> None:
         for table in self.configuration.tables_output_mapping:
             try:
-                table_meta = self._connection.execute(f"""DESCRIBE TABLE '{table.source}';""").fetchall()
+                table_meta = self._conn.execute(f"""DESCRIBE TABLE '{table.source}';""").fetchall()
                 schema = OrderedDict(
                     {
                         c[0]: ColumnDefinition(data_types=BaseType(dtype=self.convert_base_types(c[1])))
@@ -182,7 +187,7 @@ class Component(ComponentBase):
                     has_header=True,
                 )
 
-                self._connection.execute(f'''COPY "{table.source}" TO "{out_table.full_path}"
+                self._conn.execute(f'''COPY "{table.source}" TO "{out_table.full_path}"
                                                         (HEADER, DELIMITER ',', FORCE_QUOTE *)''')
 
             except duckdb.CatalogException as e:
