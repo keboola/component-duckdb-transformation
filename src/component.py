@@ -103,15 +103,39 @@ class Component(ComponentBase):
                 suffix = files[0].split(".")[-1]
 
                 if suffix in ["csv", "gz"]:
-                    read = f"read_csv({files}, column_names={in_table.column_names})"
+                    self._conn.execute(f"""
+                                    CREATE OR REPLACE TABLE '{in_table.name}' AS
+                                    FROM read_csv({files}, column_names={in_table.column_names})""")
                 elif suffix == "parquet":
-                    read = f"read_parquet({files})"
+                    """
+                    Snowflake keeps integers as NUMBER(38,0): https://docs.snowflake.com/en/sql-reference/data-types-numeric#int-integer-bigint-smallint-tinyint-byteint  # noqa: E501
+                    and exports them to Parquet as DECIMAL(38,0) which negatively impacts performance in DuckDB: https://duckdb.org/docs/stable/sql/data_types/numeric.html#fixed-point-decimals  # noqa: E501
+                    based on the KBC column metadata we are casting such columns to BIGINT.
+                    """
+                    to_cast = [
+                        k
+                        for k, v in in_table.table_metadata.column_metadata.items()
+                        if v.get("KBC.datatype.basetype") == "INTEGER"
+                    ]
+                    if to_cast:
+                        rel = self._conn.sql(f"""FROM read_parquet({files})""")
+
+                        columns = []
+                        for col in rel.columns:
+                            if col in to_cast:
+                                columns.append(duckdb.ColumnExpression(col).cast(duckdb.typing.BIGINT).alias(col))
+                            else:
+                                columns.append(duckdb.ColumnExpression(col))
+
+                        self._conn.execute(f'DROP TABLE IF EXISTS "{in_table.name}"')
+                        rel.select(*columns).to_table(in_table.name)
+                    else:
+                        self._conn.execute(f"""
+                                        CREATE OR REPLACE TABLE '{in_table.name}' AS
+                                        FROM read_parquet({files})""")
+
                 else:
                     raise UserException(f"Unsupported file format: {suffix}")
-
-                self._conn.execute(f"""
-                CREATE OR REPLACE TABLE '{in_table.name}'AS
-                FROM {read}""")
 
                 table_meta = self._conn.execute(f"""DESCRIBE TABLE '{in_table.name}';""").fetchall()
                 logging.debug(f"Table {in_table.name} created with following dtypes: {[c[1] for c in table_meta]}")
