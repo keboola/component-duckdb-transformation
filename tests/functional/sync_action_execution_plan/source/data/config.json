@@ -1,7 +1,7 @@
 {
     "action": "run",
     "parameters": {
-        "debug": true,
+        "debug": false,
         "enable_syntax_check": true,
         "blocks": [
             {

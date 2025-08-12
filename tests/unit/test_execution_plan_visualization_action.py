@@ -41,6 +41,7 @@ def _make_blocks():
 
 class TestExecutionPlanVisualizationAction(unittest.TestCase):
     def test_execution_plan_success(self):
+        print("🚀 Starting test: test_execution_plan_success")
         action = ExecutionPlanVisualizationAction(max_workers=4)
         res = action.execution_plan_visualization(_make_blocks())
 
@@ -60,6 +61,7 @@ class TestExecutionPlanVisualizationAction(unittest.TestCase):
         self.assertTrue(res.message.startswith(expected_start))
 
     def test_execution_plan_error(self):
+        print("🚀 Starting test: test_execution_plan_error")
         import actions.execution_plan_visualization as mod
         
         original_orchestrator = mod.BlockOrchestrator

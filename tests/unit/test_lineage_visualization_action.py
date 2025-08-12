@@ -13,6 +13,7 @@ import textwrap
 
 class TestLineageVisualizationAction(unittest.TestCase):
     def test_lineage_visualization_success(self):
+        print("🚀 Starting test: test_lineage_visualization_success")
         # More complex lineage with CTE, CREATE VIEW, JOINs and multiple blocks
         sql1 = textwrap.dedent(
             """
@@ -111,6 +112,7 @@ class TestLineageVisualizationAction(unittest.TestCase):
         self.assertEqual(_normalize(res.message), _normalize(expected))
 
     def test_lineage_visualization_handles_no_tables(self):
+        print("🚀 Starting test: test_lineage_visualization_handles_no_tables")
         # SQL that has no FROM (constant select) should not break
         blocks = [Block(name="B", codes=[Code(name="C", script=["SELECT 1 AS x;"])])]
         action = LineageVisualizationAction()
@@ -120,6 +122,7 @@ class TestLineageVisualizationAction(unittest.TestCase):
         self.assertIn("SELECT 1 AS x;", res.message)
 
     def test_lineage_visualization_error_path(self):
+        print("🚀 Starting test: test_lineage_visualization_error_path")
         action = LineageVisualizationAction()
         original_iterate_blocks = action.sql_parser.iterate_blocks
         
@@ -134,12 +137,14 @@ class TestLineageVisualizationAction(unittest.TestCase):
             action.sql_parser.iterate_blocks = original_iterate_blocks
 
     def test_lineage_visualization_empty(self):
+        print("🚀 Starting test: test_lineage_visualization_empty")
         action = LineageVisualizationAction()
         res = action.lineage_visualization([])
 
         self.assertEqual(res.type, MessageType.SUCCESS)
 
     def test_lineage_visualization_error(self):
+        print("🚀 Starting test: test_lineage_visualization_error")
         action = LineageVisualizationAction()
         original_iterate_blocks = action.sql_parser.iterate_blocks
 
