@@ -1,3 +1,4 @@
+import unittest
 import os
 import sys
 
@@ -38,37 +39,42 @@ def _make_blocks():
     ]
 
 
-def test_execution_plan_success():
-    action = ExecutionPlanVisualizationAction(max_workers=4)
-    res = action.execution_plan_visualization(_make_blocks())
+class TestExecutionPlanVisualizationAction(unittest.TestCase):
+    def test_execution_plan_success(self):
+        action = ExecutionPlanVisualizationAction(max_workers=4)
+        res = action.execution_plan_visualization(_make_blocks())
 
-    assert res.type == MessageType.SUCCESS
-    expected_start = (
-        "# 🚀 Execution Plan Visualization\n\n"
-        "## 📊 Execution Summary\n\n"
-        "- **Total Queries:** 4\n"
-        "- **Total Batches:** 4\n"
-        "- **Max Parallel Workers:** 4\n\n"
-        "## 🔄 Execution Flow\n\n"
-        "### 🧱 Block: B1\n\n"
-        "#### ⚡ Batch (Parallel Execution)\n\n"
-        "- **C1_0** (Code: C1)\n"
-    )
-    # Only verify the start to keep the test robust to ordering of later sections
-    assert res.message.startswith(expected_start)
+        self.assertEqual(res.type, MessageType.SUCCESS)
+        expected_start = (
+            "# 🚀 Execution Plan Visualization\n\n"
+            "## 📊 Execution Summary\n\n"
+            "- **Total Queries:** 4\n"
+            "- **Total Batches:** 4\n"
+            "- **Max Parallel Workers:** 4\n\n"
+            "## 🔄 Execution Flow\n\n"
+            "### 🧱 Block: B1\n\n"
+            "#### ⚡ Batch (Parallel Execution)\n\n"
+            "- **C1_0** (Code: C1)\n"
+        )
+        # Only verify the start to keep the test robust to ordering of later sections
+        self.assertTrue(res.message.startswith(expected_start))
 
+    def test_execution_plan_error(self):
+        import actions.execution_plan_visualization as mod
+        
+        original_orchestrator = mod.BlockOrchestrator
 
-def test_execution_plan_error(monkeypatch):
-    import actions.execution_plan_visualization as mod
+        def boom(*_, **__):
+            raise RuntimeError("boom")
 
-    def boom(*_, **__):
-        raise RuntimeError("boom")
+        try:
+            mod.BlockOrchestrator = boom
+            action = ExecutionPlanVisualizationAction(max_workers=2)
+            res = action.execution_plan_visualization([])
 
-    monkeypatch.setattr(mod, "BlockOrchestrator", boom)
-    action = ExecutionPlanVisualizationAction(max_workers=2)
-    res = action.execution_plan_visualization([])
-
-    assert res.type == MessageType.DANGER
-    assert "Error generating execution plan visualization" in res.message
+            self.assertEqual(res.type, MessageType.DANGER)
+            self.assertIn("Error generating execution plan visualization", res.message)
+        finally:
+            mod.BlockOrchestrator = original_orchestrator
 
 

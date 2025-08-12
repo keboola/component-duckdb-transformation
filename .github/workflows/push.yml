@@ -123,7 +123,7 @@ jobs:
           docker image ls -a
           docker run ${{ env.KBC_DEVELOPERPORTAL_APP }}:latest flake8 . --config=flake8.cfg
           echo "Running unittest discovery..."
-          docker run ${{ env.KBC_DEVELOPERPORTAL_APP }}:latest sh -lc 'python -m unittest discover -v'
+          docker run ${{ env.KBC_DEVELOPERPORTAL_APP }}:latest sh -lc 'python -m unittest discover'
 
   tests-kbc:
     name: Run KBC Tests
