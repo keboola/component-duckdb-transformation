@@ -12,7 +12,8 @@ from configuration import Block, Code, Configuration
 
 class TestExpectedInputTablesAction(unittest.TestCase):
     def test_expected_input_tables_success(self):
-        print("🚀 Starting test: test_expected_input_tables_success")
+        sys.stderr.write("🚀 Starting test: test_expected_input_tables_success\n")
+        sys.stderr.flush()
         action = ExpectedInputTablesAction()
         cfg = Configuration(
             blocks=[
@@ -64,7 +65,8 @@ class TestExpectedInputTablesAction(unittest.TestCase):
         self.assertEqual(res.message, "in_a, in_b, in_c")
 
     def test_expected_input_tables_empty(self):
-        print("🚀 Starting test: test_expected_input_tables_empty")
+        sys.stderr.write("🚀 Starting test: test_expected_input_tables_empty\n")
+        sys.stderr.flush()
         action = ExpectedInputTablesAction()
         res = action.expected_input_tables([])
 
@@ -72,7 +74,8 @@ class TestExpectedInputTablesAction(unittest.TestCase):
         self.assertEqual(res.message, "")
 
     def test_expected_input_tables_error(self):
-        print("🚀 Starting test: test_expected_input_tables_error")
+        sys.stderr.write("🚀 Starting test: test_expected_input_tables_error\n")
+        sys.stderr.flush()
         action = ExpectedInputTablesAction()
         original_iterate_blocks = action.sql_parser.iterate_blocks
 
@@ -90,7 +93,8 @@ class TestExpectedInputTablesAction(unittest.TestCase):
             action.sql_parser.iterate_blocks = original_iterate_blocks
 
     def test_expected_input_tables_filters_cte_aliases_only(self):
-        print("🚀 Starting test: test_expected_input_tables_filters_cte_aliases_only")
+        sys.stderr.write("🚀 Starting test: test_expected_input_tables_filters_cte_aliases_only\n")
+        sys.stderr.flush()
         # If all identifiers are typical CTE aliases, result should be empty
         action = ExpectedInputTablesAction()
         cfg = Configuration(
@@ -118,7 +122,8 @@ class TestExpectedInputTablesAction(unittest.TestCase):
         self.assertEqual(res.message, "raw_data")
 
     def test_expected_input_tables_create_without_inputs(self):
-        print("🚀 Starting test: test_expected_input_tables_create_without_inputs")
+        sys.stderr.write("🚀 Starting test: test_expected_input_tables_create_without_inputs\n")
+        sys.stderr.flush()
         # CREATE from constant has no external dependencies
         action = ExpectedInputTablesAction()
         cfg = Configuration(
