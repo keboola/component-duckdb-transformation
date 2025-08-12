@@ -1,0 +1,226 @@
+{
+    "action": "run",
+    "parameters": {
+        "debug": true,
+        "enable_syntax_check": true,
+        "blocks": [
+            {
+                "name": "Data Preparation",
+                "codes": [
+                    {
+                        "name": "Create Base Enriched Data",
+                        "script": [
+                            "-- Create base enriched data table with proper type casting\nCREATE OR REPLACE TABLE enriched_base_data AS\nSELECT \n    CAST(id AS BIGINT) as id,\n    CAST(bigint_col AS BIGINT) as bigint_col,\n    CAST(decimal_col AS DOUBLE) as decimal_col,\n    CAST(double_col AS DOUBLE) as double_col,\n    varchar_col,\n    uuid_col,\n    CAST(date_col AS DATE) as date_col,\n    CAST(timestamp_col AS TIMESTAMP) as timestamp_col,\n    CAST(boolean_col AS BOOLEAN) as boolean_col,\n    -- Add calculated fields\n    CASE \n        WHEN CAST(decimal_col AS DOUBLE) > 500 THEN 'HIGH_VALUE'\n        WHEN CAST(decimal_col AS DOUBLE) > 200 THEN 'MEDIUM_VALUE'\n        ELSE 'LOW_VALUE'\n    END as value_category,\n    CASE \n        WHEN CAST(boolean_col AS BOOLEAN) = TRUE AND CAST(double_col AS DOUBLE) > 0 THEN 'POSITIVE_ACTIVE'\n        WHEN CAST(boolean_col AS BOOLEAN) = FALSE AND CAST(double_col AS DOUBLE) < 0 THEN 'NEGATIVE_INACTIVE'\n        ELSE 'MIXED'\n    END as status_category,\n    -- Simple calculations\n    CASE WHEN CAST(double_col AS DOUBLE) != 0 THEN (CAST(bigint_col AS BIGINT) * CAST(decimal_col AS DOUBLE)) \/ CAST(double_col AS DOUBLE) ELSE NULL END as calculated_ratio,\n    LENGTH(varchar_col) as text_length,\n    -- Date extractions\n    EXTRACT(YEAR FROM CAST(date_col AS DATE)) as year,\n    EXTRACT(MONTH FROM CAST(date_col AS DATE)) as month,\n    EXTRACT(DAY FROM CAST(date_col AS DATE)) as day,\n    EXTRACT(HOUR FROM CAST(timestamp_col AS TIMESTAMP)) as hour,\n    EXTRACT(DOW FROM CAST(date_col AS DATE)) as day_of_week\nFROM \"complex_test_data_10\"\nWHERE CAST(date_col AS DATE) >= CAST('2029-01-01' AS DATE);"
+                        ]
+                    },
+                    {
+                        "name": "Create Data Multiplier Table",
+                        "script": [
+                            "-- Create table that multiplies data for stress testing\nCREATE OR REPLACE TABLE multiplied_data AS\nWITH base_data AS (\n    SELECT * FROM enriched_base_data\n),\nmultiplier AS (\n    SELECT 1 as multiplier UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4 UNION ALL SELECT 5\n),\ncartesian_product AS (\n    SELECT \n        b.*,\n        m.multiplier,\n        -- Create unique IDs for multiplied data\n        CAST(b.id AS BIGINT) * 1000000 + m.multiplier as multiplied_id,\n        -- Add some variation to multiplied data\n        CAST(b.decimal_col AS DOUBLE) * (1 + (m.multiplier - 1) * 0.1) as varied_decimal,\n        CAST(b.bigint_col AS BIGINT) + (m.multiplier - 1) * 1000 as varied_bigint,\n        CAST(b.double_col AS DOUBLE) * (1 + (m.multiplier - 1) * 0.05) as varied_double\n    FROM base_data b\n    CROSS JOIN multiplier m\n)\nSELECT \n    multiplied_id as id,\n    date_col,\n    timestamp_col,\n    varied_bigint as bigint_col,\n    varied_decimal as decimal_col,\n    varied_double as double_col,\n    varchar_col || '_' || CAST(multiplier AS VARCHAR) as varchar_col,\n    uuid_col,\n    boolean_col,\n    value_category,\n    status_category,\n    calculated_ratio,\n    text_length,\n    year,\n    month,\n    day,\n    hour,\n    day_of_week,\n    multiplier\nFROM cartesian_product;"
+                        ]
+                    }
+                ]
+            },
+            {
+                "name": "Basic Analytics",
+                "codes": [
+                    {
+                        "name": "Create Simple Analytics Output",
+                        "script": [
+                            "-- Create simple analytics output table\nCREATE OR REPLACE TABLE simple_analytics AS\nSELECT \n    date_col,\n    value_category,\n    COUNT(*) as record_count,\n    SUM(decimal_col) as total_value,\n    AVG(decimal_col) as avg_value,\n    MAX(decimal_col) as max_value,\n    MIN(decimal_col) as min_value,\n    COUNT(DISTINCT id) as unique_users,\n    COUNT(CASE WHEN boolean_col THEN 1 END) as active_records,\n    AVG(bigint_col) as avg_bigint,\n    SUM(double_col) as total_double\nFROM multiplied_data\nWHERE date_col >= CAST('2029-01-01' AS DATE)\nGROUP BY date_col, value_category\nORDER BY date_col, value_category;"
+                        ]
+                    },
+                    {
+                        "name": "Create Monthly Aggregations Output",
+                        "script": [
+                            "-- Create final monthly aggregations output table\nCREATE OR REPLACE TABLE monthly_aggregations AS\nSELECT \n    date_trunc('month', date_col) as month,\n    value_category as category,\n    COUNT(*) as record_count,\n    SUM(decimal_col) as total_value,\n    AVG(decimal_col) as avg_value,\n    MAX(decimal_col) as max_value,\n    MIN(decimal_col) as min_value,\n    STDDEV(decimal_col) as stddev_value,\n    -- Additional metrics\n    COUNT(DISTINCT id) as unique_users,\n    COUNT(CASE WHEN boolean_col THEN 1 END) as active_records,\n    AVG(bigint_col) as avg_bigint,\n    SUM(double_col) as total_double,\n    -- Growth metrics\n    LAG(COUNT(*), 1) OVER (PARTITION BY value_category ORDER BY date_trunc('month', date_col)) as prev_month_records,\n    CASE \n        WHEN LAG(COUNT(*), 1) OVER (PARTITION BY value_category ORDER BY date_trunc('month', date_col)) > 0 \n        THEN (COUNT(*) - LAG(COUNT(*), 1) OVER (PARTITION BY value_category ORDER BY date_trunc('month', date_col))) \/ \n             LAG(COUNT(*), 1) OVER (PARTITION BY value_category ORDER BY date_trunc('month', date_col)) * 100\n        ELSE NULL\n    END as month_over_month_growth,\n    -- Percentile metrics\n    PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY decimal_col) as q1_value,\n    PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY decimal_col) as median_value,\n    PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY decimal_col) as q3_value,\n    PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY decimal_col) as p95_value\nFROM multiplied_data\nWHERE date_col >= CAST('2029-01-01' AS DATE)\nGROUP BY date_trunc('month', date_col), value_category\nORDER BY month, category;"
+                        ]
+                    },
+                    {
+                        "name": "Create Complex Analytics Output",
+                        "script": [
+                            "-- Create final complex analytics output table\nCREATE OR REPLACE TABLE complex_analytics AS\nSELECT \n    date_col,\n    date_trunc('hour', timestamp_col) as hour_bucket,\n    value_category as category,\n    COUNT(*) as total_records,\n    COUNT(DISTINCT id) as unique_users,\n    AVG(decimal_col) as avg_transaction,\n    SUM(decimal_col) as total_volume,\n    -- Growth rate calculation\n    LAG(COUNT(*), 1) OVER (PARTITION BY value_category ORDER BY date_col) as prev_day_records,\n    CASE \n        WHEN LAG(COUNT(*), 1) OVER (PARTITION BY value_category ORDER BY date_col) > 0 \n        THEN (COUNT(*) - LAG(COUNT(*), 1) OVER (PARTITION BY value_category ORDER BY date_col)) \/ \n             LAG(COUNT(*), 1) OVER (PARTITION BY value_category ORDER BY date_col) * 100\n        ELSE NULL\n    END as growth_rate,\n    -- Additional complex metrics\n    STDDEV(decimal_col) as transaction_volatility,\n    CORR(decimal_col, bigint_col) as value_size_correlation,\n    COUNT(CASE WHEN boolean_col THEN 1 END) as active_transactions,\n    AVG(CASE WHEN day_of_week IN (1, 7) THEN decimal_col END) as weekend_avg,\n    AVG(CASE WHEN day_of_week BETWEEN 2 AND 6 THEN decimal_col END) as weekday_avg,\n    -- Time-based patterns\n    COUNT(CASE WHEN hour BETWEEN 9 AND 17 THEN 1 END) as business_hours_transactions,\n    COUNT(CASE WHEN hour < 9 OR hour > 17 THEN 1 END) as off_hours_transactions\nFROM multiplied_data\nWHERE date_col >= CAST('2029-01-01' AS DATE)\nGROUP BY date_col, date_trunc('hour', timestamp_col), value_category\nORDER BY date_col, hour_bucket, category;"
+                        ]
+                    }
+                ]
+            },
+            {
+                "name": "Advanced Analytics",
+                "codes": [
+                    {
+                        "name": "Create Rolling Analytics",
+                        "script": [
+                            "-- Create rolling analytics with window functions\nCREATE OR REPLACE TABLE rolling_analytics AS\nWITH daily_stats AS (\n    SELECT \n        date_col,\n        value_category,\n        COUNT(*) as daily_records,\n        AVG(decimal_col) as avg_decimal,\n        SUM(bigint_col) as sum_bigint,\n        STDDEV(double_col) as stddev_double,\n        COUNT(DISTINCT id) as unique_users,\n        COUNT(CASE WHEN boolean_col THEN 1 END) as active_records\n    FROM multiplied_data\n    GROUP BY date_col, value_category\n)\nSELECT \n    date_col,\n    value_category,\n    daily_records,\n    avg_decimal,\n    sum_bigint,\n    stddev_double,\n    unique_users,\n    active_records,\n    -- Rolling averages over 7 days\n    AVG(daily_records) OVER (PARTITION BY value_category ORDER BY date_col ROWS BETWEEN 6 PRECEDING AND CURRENT ROW) as rolling_7d_records,\n    AVG(avg_decimal) OVER (PARTITION BY value_category ORDER BY date_col ROWS BETWEEN 6 PRECEDING AND CURRENT ROW) as rolling_7d_avg_decimal,\n    -- Rolling averages over 30 days\n    AVG(daily_records) OVER (PARTITION BY value_category ORDER BY date_col ROWS BETWEEN 29 PRECEDING AND CURRENT ROW) as rolling_30d_records,\n    AVG(avg_decimal) OVER (PARTITION BY value_category ORDER BY date_col ROWS BETWEEN 29 PRECEDING AND CURRENT ROW) as rolling_30d_avg_decimal,\n    -- Growth rates\n    LAG(daily_records, 1) OVER (PARTITION BY value_category ORDER BY date_col) as prev_day_records,\n    LAG(avg_decimal, 1) OVER (PARTITION BY value_category ORDER BY date_col) as prev_day_avg_decimal,\n    -- Percentile calculations removed - not suitable for rolling analytics\n    -- Calculate growth rates\n    CASE \n        WHEN LAG(daily_records, 1) OVER (PARTITION BY value_category ORDER BY date_col) > 0 \n        THEN (daily_records - LAG(daily_records, 1) OVER (PARTITION BY value_category ORDER BY date_col)) \/ \n             LAG(daily_records, 1) OVER (PARTITION BY value_category ORDER BY date_col) * 100\n        ELSE NULL\n    END as daily_growth_rate,\n    CASE \n        WHEN LAG(avg_decimal, 1) OVER (PARTITION BY value_category ORDER BY date_col) > 0 \n        THEN (avg_decimal - LAG(avg_decimal, 1) OVER (PARTITION BY value_category ORDER BY date_col)) \/ \n             LAG(avg_decimal, 1) OVER (PARTITION BY value_category ORDER BY date_col) * 100\n        ELSE NULL\n    END as avg_growth_rate,\n    -- Volatility measures\n    CASE \n        WHEN rolling_7d_avg_decimal > 0 THEN stddev_double \/ rolling_7d_avg_decimal\n        ELSE NULL\n    END as coefficient_of_variation\nFROM daily_stats\nORDER BY date_col, value_category;"
+                        ]
+                    },
+                    {
+                        "name": "Create Correlation Analysis",
+                        "script": [
+                            "-- Create correlation analysis between different metrics\nCREATE OR REPLACE TABLE correlation_analysis AS\nWITH correlation_data AS (\n    SELECT \n        date_col,\n        value_category,\n        COUNT(*) as record_count,\n        AVG(decimal_col) as avg_decimal,\n        AVG(bigint_col) as avg_bigint,\n        AVG(double_col) as avg_double,\n        COUNT(DISTINCT id) as unique_users,\n        AVG(text_length) as avg_text_length,\n        COUNT(CASE WHEN boolean_col THEN 1 END) as active_count,\n        -- Correlation calculations\n        CORR(decimal_col, bigint_col) as decimal_bigint_correlation,\n        CORR(decimal_col, double_col) as decimal_double_correlation,\n        CORR(bigint_col, double_col) as bigint_double_correlation,\n        CORR(decimal_col, text_length) as decimal_text_correlation,\n        -- Covariance calculations\n        COVAR_POP(decimal_col, bigint_col) as decimal_bigint_covariance,\n        COVAR_POP(decimal_col, double_col) as decimal_double_covariance,\n        -- Regression-like metrics\n        AVG(decimal_col * bigint_col) - AVG(decimal_col) * AVG(bigint_col) as decimal_bigint_cross_moment,\n        AVG(decimal_col * double_col) - AVG(decimal_col) * AVG(double_col) as decimal_double_cross_moment\n    FROM multiplied_data\n    GROUP BY date_col, value_category\n)\nSELECT \n    date_col,\n    value_category,\n    record_count,\n    avg_decimal,\n    avg_bigint,\n    avg_double,\n    unique_users,\n    avg_text_length,\n    active_count,\n    decimal_bigint_correlation,\n    decimal_double_correlation,\n    bigint_double_correlation,\n    decimal_text_correlation,\n    decimal_bigint_covariance,\n    decimal_double_covariance,\n    decimal_bigint_cross_moment,\n    decimal_double_cross_moment,\n    -- Correlation strength classification\n    CASE \n        WHEN decimal_bigint_correlation > 0.7 THEN 'STRONG_POSITIVE'\n        WHEN decimal_bigint_correlation > 0.3 THEN 'MODERATE_POSITIVE'\n        WHEN decimal_bigint_correlation > -0.3 THEN 'WEAK'\n        WHEN decimal_bigint_correlation > -0.7 THEN 'MODERATE_NEGATIVE'\n        ELSE 'STRONG_NEGATIVE'\n    END as correlation_strength,\n    -- Volatility adjusted metrics\n    CASE \n        WHEN avg_decimal > 0 THEN avg_decimal \/ NULLIF(avg_double, 0)\n        ELSE NULL\n    END as sharpe_ratio_equivalent\nFROM correlation_data\nORDER BY date_col, value_category;"
+                        ]
+                    },
+                    {
+                        "name": "Create Time Series Analysis",
+                        "script": [
+                            "-- Create advanced time series analysis\nCREATE OR REPLACE TABLE time_series_analysis AS\nWITH time_buckets AS (\n    SELECT \n        date_trunc('day', date_col) as day_bucket,\n        date_trunc('week', date_col) as week_bucket,\n        date_trunc('month', date_col) as month_bucket,\n        value_category,\n        COUNT(*) as record_count,\n        AVG(decimal_col) as avg_decimal,\n        SUM(bigint_col) as sum_bigint,\n        STDDEV(double_col) as stddev_double,\n        COUNT(DISTINCT id) as unique_users,\n        COUNT(CASE WHEN boolean_col THEN 1 END) as active_records,\n        -- Time-based aggregations\n        AVG(CASE WHEN hour BETWEEN 9 AND 17 THEN decimal_col END) as business_hours_avg,\n        AVG(CASE WHEN hour < 9 OR hour > 17 THEN decimal_col END) as off_hours_avg,\n        AVG(CASE WHEN day_of_week IN (1, 7) THEN decimal_col END) as weekend_avg,\n        AVG(CASE WHEN day_of_week BETWEEN 2 AND 6 THEN decimal_col END) as weekday_avg\n    FROM multiplied_data\n    GROUP BY date_trunc('day', date_col), date_trunc('week', date_col), date_trunc('month', date_col), value_category\n),\nranked_data AS (\n    SELECT \n        *,\n        -- Rankings within each time bucket\n        ROW_NUMBER() OVER (PARTITION BY day_bucket ORDER BY record_count DESC) as daily_rank,\n        ROW_NUMBER() OVER (PARTITION BY week_bucket ORDER BY avg_decimal DESC) as weekly_rank,\n        ROW_NUMBER() OVER (PARTITION BY month_bucket ORDER BY sum_bigint DESC) as monthly_rank,\n        -- Percentile rankings\n        PERCENT_RANK() OVER (PARTITION BY day_bucket ORDER BY record_count) as daily_percentile,\n        PERCENT_RANK() OVER (PARTITION BY week_bucket ORDER BY avg_decimal) as weekly_percentile,\n        -- Moving averages\n        AVG(record_count) OVER (PARTITION BY value_category ORDER BY day_bucket ROWS BETWEEN 6 PRECEDING AND CURRENT ROW) as moving_7d_avg,\n        AVG(avg_decimal) OVER (PARTITION BY value_category ORDER BY day_bucket ROWS BETWEEN 29 PRECEDING AND CURRENT ROW) as moving_30d_avg\n    FROM time_buckets\n)\nSELECT \n    day_bucket,\n    week_bucket,\n    month_bucket,\n    value_category,\n    record_count,\n    avg_decimal,\n    sum_bigint,\n    stddev_double,\n    unique_users,\n    active_records,\n    business_hours_avg,\n    off_hours_avg,\n    weekend_avg,\n    weekday_avg,\n    daily_rank,\n    weekly_rank,\n    monthly_rank,\n    daily_percentile,\n    weekly_percentile,\n    moving_7d_avg,\n    moving_30d_avg,\n    -- Derived metrics\n    CASE \n        WHEN weekday_avg > 0 THEN weekend_avg \/ weekday_avg\n        ELSE NULL\n    END as weekend_weekday_ratio,\n    CASE \n        WHEN off_hours_avg > 0 THEN business_hours_avg \/ off_hours_avg\n        ELSE NULL\n    END as business_off_hours_ratio,\n    -- Growth calculations\n    LAG(record_count, 1) OVER (PARTITION BY value_category ORDER BY day_bucket) as prev_day_count,\n    CASE \n        WHEN LAG(record_count, 1) OVER (PARTITION BY value_category ORDER BY day_bucket) > 0 \n        THEN (record_count - LAG(record_count, 1) OVER (PARTITION BY value_category ORDER BY day_bucket)) \/ \n             LAG(record_count, 1) OVER (PARTITION BY value_category ORDER BY day_bucket) * 100\n        ELSE NULL\n    END as day_over_day_growth\nFROM ranked_data\nORDER BY day_bucket, value_category;"
+                        ]
+                    },
+                    {
+                        "name": "Create Statistical Summary",
+                        "script": [
+                            "-- Create comprehensive statistical summary\nCREATE OR REPLACE TABLE statistical_summary AS\nSELECT \n    value_category,\n    status_category,\n    COUNT(*) as total_records,\n    COUNT(DISTINCT id) as unique_users,\n    -- Basic statistics\n    AVG(decimal_col) as mean_decimal,\n    MEDIAN(decimal_col) as median_decimal,\n    MODE(decimal_col) as mode_decimal,\n    MIN(decimal_col) as min_decimal,\n    MAX(decimal_col) as max_decimal,\n    STDDEV(decimal_col) as stddev_decimal,\n    VARIANCE(decimal_col) as variance_decimal,\n    -- Percentiles\n    PERCENTILE_CONT(0.01) WITHIN GROUP (ORDER BY decimal_col) as p01_decimal,\n    PERCENTILE_CONT(0.05) WITHIN GROUP (ORDER BY decimal_col) as p05_decimal,\n    PERCENTILE_CONT(0.10) WITHIN GROUP (ORDER BY decimal_col) as p10_decimal,\n    PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY decimal_col) as q1_decimal,\n    PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY decimal_col) as q2_decimal,\n    PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY decimal_col) as q3_decimal,\n    PERCENTILE_CONT(0.90) WITHIN GROUP (ORDER BY decimal_col) as p90_decimal,\n    PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY decimal_col) as p95_decimal,\n    PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY decimal_col) as p99_decimal,\n    -- Bigint statistics\n    AVG(bigint_col) as mean_bigint,\n    MEDIAN(bigint_col) as median_bigint,\n    MIN(bigint_col) as min_bigint,\n    MAX(bigint_col) as max_bigint,\n    STDDEV(bigint_col) as stddev_bigint,\n    -- Double statistics\n    AVG(double_col) as mean_double,\n    MEDIAN(double_col) as median_double,\n    MIN(double_col) as min_double,\n    MAX(double_col) as max_double,\n    STDDEV(double_col) as stddev_double,\n    -- Text statistics\n    AVG(text_length) as mean_text_length,\n    MIN(text_length) as min_text_length,\n    MAX(text_length) as max_text_length,\n    STDDEV(text_length) as stddev_text_length,\n    -- Boolean statistics\n    COUNT(CASE WHEN boolean_col THEN 1 END) as true_count,\n    COUNT(CASE WHEN NOT boolean_col THEN 1 END) as false_count,\n    AVG(CASE WHEN boolean_col THEN 1 ELSE 0 END) as true_ratio,\n    -- Time-based statistics\n    COUNT(CASE WHEN day_of_week IN (1, 7) THEN 1 END) as weekend_count,\n    COUNT(CASE WHEN day_of_week BETWEEN 2 AND 6 THEN 1 END) as weekday_count,\n    COUNT(CASE WHEN hour BETWEEN 9 AND 17 THEN 1 END) as business_hours_count,\n    COUNT(CASE WHEN hour < 9 OR hour > 17 THEN 1 END) as off_hours_count,\n    -- Skewness and kurtosis approximations\n    (AVG(decimal_col * decimal_col * decimal_col) - 3 * AVG(decimal_col) * AVG(decimal_col * decimal_col) + 2 * AVG(decimal_col) * AVG(decimal_col) * AVG(decimal_col)) \/ \n    POWER(STDDEV(decimal_col), 3) as skewness_decimal,\n    (AVG(decimal_col * decimal_col * decimal_col * decimal_col) - 4 * AVG(decimal_col) * AVG(decimal_col * decimal_col * decimal_col) + 6 * AVG(decimal_col) * AVG(decimal_col) * AVG(decimal_col * decimal_col) - 3 * AVG(decimal_col) * AVG(decimal_col) * AVG(decimal_col) * AVG(decimal_col)) \/ \n    POWER(STDDEV(decimal_col), 4) as kurtosis_decimal\nFROM multiplied_data\nGROUP BY value_category, status_category\nORDER BY value_category, status_category;"
+                        ]
+                    }
+                ]
+            }
+        ]
+    },
+    "storage": {
+        "output": {
+            "tables": [
+                {
+                    "destination": "out.c-main.simple_analytics",
+                    "source": "simple_analytics",
+                    "incremental": false,
+                    "primary_key": [],
+                    "columns": [],
+                    "distribution_key": [],
+                    "delete_where_values": [],
+                    "delete_where_operator": "eq",
+                    "delimiter": ",",
+                    "enclosure": "\"",
+                    "metadata": [],
+                    "column_metadata": [],
+                    "write_always": false,
+                    "tags": [],
+                    "schema": []
+                },
+                {
+                    "destination": "out.c-main.monthly_aggregations",
+                    "source": "monthly_aggregations",
+                    "incremental": false,
+                    "primary_key": [],
+                    "columns": [],
+                    "distribution_key": [],
+                    "delete_where_values": [],
+                    "delete_where_operator": "eq",
+                    "delimiter": ",",
+                    "enclosure": "\"",
+                    "metadata": [],
+                    "column_metadata": [],
+                    "write_always": false,
+                    "tags": [],
+                    "schema": []
+                },
+                {
+                    "destination": "out.c-main.complex_analytics",
+                    "source": "complex_analytics",
+                    "incremental": false,
+                    "primary_key": [],
+                    "columns": [],
+                    "distribution_key": [],
+                    "delete_where_values": [],
+                    "delete_where_operator": "eq",
+                    "delimiter": ",",
+                    "enclosure": "\"",
+                    "metadata": [],
+                    "column_metadata": [],
+                    "write_always": false,
+                    "tags": [],
+                    "schema": []
+                },
+                {
+                    "destination": "out.c-main.rolling_analytics",
+                    "source": "rolling_analytics",
+                    "incremental": false,
+                    "primary_key": [],
+                    "columns": [],
+                    "distribution_key": [],
+                    "delete_where_values": [],
+                    "delete_where_operator": "eq",
+                    "delimiter": ",",
+                    "enclosure": "\"",
+                    "metadata": [],
+                    "column_metadata": [],
+                    "write_always": false,
+                    "tags": [],
+                    "schema": []
+                },
+                {
+                    "destination": "out.c-main.correlation_analysis",
+                    "source": "correlation_analysis",
+                    "incremental": false,
+                    "primary_key": [],
+                    "columns": [],
+                    "distribution_key": [],
+                    "delete_where_values": [],
+                    "delete_where_operator": "eq",
+                    "delimiter": ",",
+                    "enclosure": "\"",
+                    "metadata": [],
+                    "column_metadata": [],
+                    "write_always": false,
+                    "tags": [],
+                    "schema": []
+                },
+                {
+                    "destination": "out.c-main.time_series_analysis",
+                    "source": "time_series_analysis",
+                    "incremental": false,
+                    "primary_key": [],
+                    "columns": [],
+                    "distribution_key": [],
+                    "delete_where_values": [],
+                    "delete_where_operator": "eq",
+                    "delimiter": ",",
+                    "enclosure": "\"",
+                    "metadata": [],
+                    "column_metadata": [],
+                    "write_always": false,
+                    "tags": [],
+                    "schema": []
+                },
+                {
+                    "destination": "out.c-main.statistical_summary",
+                    "source": "statistical_summary",
+                    "incremental": false,
+                    "primary_key": [],
+                    "columns": [],
+                    "distribution_key": [],
+                    "delete_where_values": [],
+                    "delete_where_operator": "eq",
+                    "delimiter": ",",
+                    "enclosure": "\"",
+                    "metadata": [],
+                    "column_metadata": [],
+                    "write_always": false,
+                    "tags": [],
+                    "schema": []
+                }
+            ],
+            "files": []
+        },
+        "input": {
+            "tables": [
+                {
+                    "source": "out.c-MotherDuck_performance_test.complex_test_data_10",
+                    "destination": "complex_test_data_10.csv",
+                    "where_column": "",
+                    "where_values": [],
+                    "where_operator": "eq",
+                    "columns": [],
+                    "keep_internal_timestamp_column": false,
+                    "column_types": [],
+                    "overwrite": false,
+                    "use_view": false
+                }
+            ],
+            "files": []
+        }
+    },
+    "shared_code_row_ids": [],
+    "image_parameters": {},
+    "authorization": {
+        "context": "9382-transformation"
+    }
+}

@@ -1,1 +1,1 @@
-keboola.duckdb-transformation short description
+DuckDB SQL transformation component with block-based orchestration, parallel execution, and automatic dependency detection.

@@ -1,1 +1,1 @@
-git@github.com:keboola/component-duckdb-transformation.git/blob/master/README.md
+https://github.com/component-duckdb-transformation.git/blob/master/README.md

@@ -1,0 +1,72 @@
+{
+    "id": "out.c-MotherDuck_performance_test.complex_test_data_10",
+    "uri": "https:\/\/connection.keboola.com\/v2\/storage\/tables\/out.c-MotherDuck_performance_test.complex_test_data_10",
+    "name": "complex_test_data_10",
+    "primary_key": [],
+    "distribution_key": [],
+    "created": "2025-04-01T13:45:30+0200",
+    "last_change_date": "2025-04-01T13:45:36+0200",
+    "last_import_date": "2025-04-01T13:45:36+0200",
+    "columns": [
+        "id",
+        "bigint_col",
+        "decimal_col",
+        "double_col",
+        "varchar_col",
+        "uuid_col",
+        "date_col",
+        "timestamp_col",
+        "boolean_col",
+        "int_array_col",
+        "float_array_col",
+        "str_array_col",
+        "struct_col",
+        "map_col"
+    ],
+    "metadata": [
+        {
+            "id": "1724469193",
+            "key": "KBC.createdBy.component.id",
+            "value": "kds-team.app-custom-python",
+            "provider": "system",
+            "timestamp": "2025-04-01T13:45:36+0200"
+        },
+        {
+            "id": "1724469194",
+            "key": "KBC.createdBy.configuration.id",
+            "value": "1238105365",
+            "provider": "system",
+            "timestamp": "2025-04-01T13:45:36+0200"
+        },
+        {
+            "id": "1724469195",
+            "key": "KBC.lastUpdatedBy.component.id",
+            "value": "kds-team.app-custom-python",
+            "provider": "system",
+            "timestamp": "2025-04-01T13:45:37+0200"
+        },
+        {
+            "id": "1724469196",
+            "key": "KBC.lastUpdatedBy.configuration.id",
+            "value": "1238105365",
+            "provider": "system",
+            "timestamp": "2025-04-01T13:45:37+0200"
+        }
+    ],
+    "column_metadata": {
+        "id": [],
+        "bigint_col": [],
+        "decimal_col": [],
+        "double_col": [],
+        "varchar_col": [],
+        "uuid_col": [],
+        "date_col": [],
+        "timestamp_col": [],
+        "boolean_col": [],
+        "int_array_col": [],
+        "float_array_col": [],
+        "str_array_col": [],
+        "struct_col": [],
+        "map_col": []
+    }
+}
