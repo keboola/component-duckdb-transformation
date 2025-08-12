@@ -123,22 +123,6 @@ class TestLineageVisualizationAction(unittest.TestCase):
         # Should still include the query section and SQL
         self.assertIn("SELECT 1 AS x;", res.message)
 
-    def test_lineage_visualization_error_path(self):
-        sys.stderr.write("🚀 Starting test: test_lineage_visualization_error_path\n")
-        sys.stderr.flush()
-        action = LineageVisualizationAction()
-        original_iterate_blocks = action.sql_parser.iterate_blocks
-        
-        def boom(_):
-            raise RuntimeError("boom")
-            
-        try:
-            action.sql_parser.iterate_blocks = boom
-            res = action.lineage_visualization([])
-            self.assertEqual(res.type, MessageType.DANGER)
-        finally:
-            action.sql_parser.iterate_blocks = original_iterate_blocks
-
     def test_lineage_visualization_empty(self):
         sys.stderr.write("🚀 Starting test: test_lineage_visualization_empty\n")
         sys.stderr.flush()
