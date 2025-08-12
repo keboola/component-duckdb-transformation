@@ -1,6 +1,7 @@
 """Local file table creator."""
 
 import logging
+import os
 from csv import DictReader
 from dataclasses import dataclass
 
@@ -33,8 +34,8 @@ class LocalTableCreator:
         # Get local file path
         path = self._get_local_file_path(in_table)
         # Create table
-        suffix = path
-        if suffix == "parquet":
+        ext = os.path.splitext(path)[1].lower()
+        if ext in (".parquet", ".parq"):
             return self._create_table_from_parquet(in_table, path)
         else:
             try:

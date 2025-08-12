@@ -17,7 +17,6 @@ DuckDB SQL transformation component for Keboola platform with block-based orches
 
 **Table of Contents:**
 
-[TOC]
 
 Functionality Notes
 ===================
@@ -74,7 +73,7 @@ The component uses a block-based configuration structure:
     "max_memory_mb": 2048,
     "dtypes_infer": false,
     "debug": false,
-    "syntax_check_on_startup": true
+    "syntax_check_on_startup": false
   }
 }
 ```
@@ -85,7 +84,7 @@ The component uses a block-based configuration structure:
 - `max_memory_mb`: Memory limit for DuckDB in MB (None for auto-detection)
 - `dtypes_infer`: Enable automatic data type inference for CSV files (default: false)
 - `debug`: Enable debug logging (default: false)
-- `syntax_check_on_startup`: Validate SQL syntax before execution (default: true)
+- `syntax_check_on_startup`: Validate SQL syntax before execution (default: false)
 
 **Input Sources:**
 - **Local Files**: CSV and Parquet files from local storage
@@ -99,7 +98,7 @@ The component uses a block-based configuration structure:
 Output
 ======
 
-Provides a list of tables, foreign keys, and schema.
+Exports tables to CSV files with manifests into `out/tables` and file manifests into `out/files`.
 
 Development
 -----------
