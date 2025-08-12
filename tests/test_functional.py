@@ -32,6 +32,13 @@ class TestComponent(unittest.TestCase):
         )
         functional_tests.run()
 
+    @freeze_time("2023-04-02")
+    def test_functional_parquet(self):
+        os.environ["KBC_DATA_TYPE_SUPPORT"] = "none"
+        base_dir = path.dirname(__file__)
+        functional_tests = DataDirTester(data_dir=path.join(base_dir, "functional"), selected_tests=["simple_parquet"])
+        functional_tests.run()
+
 
 if __name__ == "__main__":
     unittest.main()
