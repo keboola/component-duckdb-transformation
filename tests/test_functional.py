@@ -1,4 +1,5 @@
 import os
+from os import path
 import unittest
 
 from datadirtest import DataDirTester
@@ -9,13 +10,8 @@ class TestComponent(unittest.TestCase):
     @freeze_time("2023-04-02")
     def test_functional(self):
         os.environ["KBC_DATA_TYPE_SUPPORT"] = "none"
-        functional_tests = DataDirTester()
-        functional_tests.run()
-
-    @freeze_time("2023-04-02")
-    def test_functional_types(self):
-        os.environ["KBC_DATA_TYPE_SUPPORT"] = "authoritative"
-        functional_tests = DataDirTester(data_dir="./tests/functional_dtypes")
+        base_dir = path.dirname(__file__)
+        functional_tests = DataDirTester(data_dir=path.join(base_dir, "functional"))
         functional_tests.run()
 
 

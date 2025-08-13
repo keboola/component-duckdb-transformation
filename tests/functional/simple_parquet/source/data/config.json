@@ -1,0 +1,41 @@
+{
+  "parameters": {
+    "blocks": [
+      {
+        "name": "Block 1",
+        "codes": [
+          {
+            "name": "Parquet",
+            "script": [
+              "CREATE VIEW 'out-parquet.csv' AS ( SELECT * FROM pq );"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "storage": {
+    "output": {
+      "tables": [
+        {
+          "destination": "out.c-out.out-parquet",
+          "source": "out-parquet.csv"
+        }
+      ]
+    },
+    "input": {
+      "tables": [
+        {
+          "source": "in.c-pq",
+          "destination": "pq",
+          "where_column": "",
+          "where_values": [],
+          "where_operator": "eq",
+          "columns": [],
+          "keep_internal_timestamp_column": false
+        }
+      ]
+    }
+  }
+}
+

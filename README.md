@@ -1,11 +1,22 @@
 keboola.duckdb-transformation
 =============
 
-Description
+DuckDB SQL transformation component for Keboola platform with block-based orchestration.
+
+**Features:**
+- **Consecutive Blocks**: Blocks execute in order, ensuring logical separation of processing phases
+- **Parallel Scripts**: Scripts within each block run in parallel when dependencies allow
+- **Automatic DAG**: Component creates its own dependency graph based on SQL analysis
+- **SQLGlot Integration**: Advanced SQL parsing and dependency detection
+- **Performance Optimization**: Parallel execution with configurable thread limits
+- **System Resource Detection**: Automatic detection of CPU and memory limits for optimal DuckDB settings
+- **Local File Support**: Support for CSV and Parquet files from local storage
+- **Data Type Inference**: Optional automatic data type detection for CSV files
+- **SQL Validation**: Startup and on-demand SQL syntax validation
+- **Visualization Actions**: Execution plan and data lineage visualization
 
 **Table of Contents:**
 
-[TOC]
 
 Functionality Notes
 ===================
@@ -20,12 +31,16 @@ Features
 
 | **Feature**             | **Description**                               |
 |-------------------------|-----------------------------------------------|
-| Generic UI Form         | Dynamic UI form for easy configuration.       |
-| Row-Based Configuration | Allows structuring the configuration in rows. |
-| OAuth                   | OAuth authentication enabled.                 |
-| Incremental Loading     | Fetch data in new increments.                 |
-| Backfill Mode           | Supports seamless backfill setup.             |
-| Date Range Filter       | Specify the date range for data retrieval.    |
+| Block-Based Orchestration | Consecutive blocks with parallel scripts execution |
+| Automatic DAG Creation | SQL dependency analysis and execution planning |
+| SQLGlot Integration    | Advanced SQL parsing and syntax validation    |
+| Parallel Processing     | Configurable thread limits for performance    |
+| Memory Management       | Configurable memory limits for DuckDB         |
+| Syntax Checking         | Startup and on-demand SQL validation          |
+| System Resource Detection | Automatic CPU and memory detection for optimal settings |
+| Local File Support      | Support for CSV and Parquet files from local storage |
+| Data Type Inference     | Optional automatic data type detection for CSV files |
+| Execution Visualization | Visualize execution plan and data lineage |
 
 Supported Endpoints
 ===================
@@ -36,18 +51,54 @@ If you need additional endpoints, please submit your request to
 Configuration
 =============
 
-Param 1
--------
-Details about parameter 1.
+The component uses a block-based configuration structure:
 
-Param 2
--------
-Details about parameter 2.
+```json
+{
+  "parameters": {
+    "blocks": [
+      {
+        "name": "Data Preparation",
+        "codes": [
+          {
+            "name": "Clean Data",
+            "script": [
+              "CREATE VIEW 'clean_table' AS SELECT * FROM input_table WHERE valid = true;"
+            ]
+          }
+        ]
+      }
+    ],
+    "threads": 4,
+    "max_memory_mb": 2048,
+    "dtypes_infer": false,
+    "debug": false,
+    "syntax_check_on_startup": false
+  }
+}
+```
+
+**Parameters:**
+- `blocks`: Array of processing blocks (executed consecutively)
+- `threads`: Number of parallel threads for query execution (None for auto-detection)
+- `max_memory_mb`: Memory limit for DuckDB in MB (None for auto-detection)
+- `dtypes_infer`: Enable automatic data type inference for CSV files (default: false)
+- `debug`: Enable debug logging (default: false)
+- `syntax_check_on_startup`: Validate SQL syntax before execution (default: false)
+
+**Input Sources:**
+- **Local Files**: CSV and Parquet files from local storage
+
+**Sync Actions:**
+- `syntax_check`: Validate SQL syntax without execution
+- `lineage_visualization`: Generate data lineage visualization
+- `execution_plan_visualization`: Visualize execution plan
+- `expected_input_tables`: Show expected input tables
 
 Output
 ======
 
-Provides a list of tables, foreign keys, and schema.
+Exports tables to CSV files with manifests into `out/tables` and file manifests into `out/files`.
 
 Development
 -----------
