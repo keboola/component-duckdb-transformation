@@ -1,5 +1,6 @@
 {
   "parameters": {
+    "debug": "true",
     "blocks": [
       {
         "name": "Block 1",

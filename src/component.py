@@ -148,9 +148,10 @@ class Component(ComponentBase):
             # Find mapping from source to destination names from config
             destination_table_name = None
             for table in self.configuration.tables_input_mapping:
-                if table.source in table_def.id:
-                    destination_table_name = table.destination
-                    break
+                if table_def.id:
+                    if table.source in table_def.id:
+                        destination_table_name = table.destination
+                        break
 
             # Fallback: use original name without .csv
             if not destination_table_name:
