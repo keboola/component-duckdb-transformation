@@ -123,9 +123,9 @@ def _create_parallel_batches_for_block(block_queries: list[Query], producers: di
             for output in query.outputs:
                 if output in table_creators:
                     creator = table_creators[output]
-                    if creator.name != query.name:
-                        local_graph[creator.name].append(query.name)
-                        local_in_degree[query.name] += 1
+                    # Add dependency: INSERT must run after CREATE for the same table
+                    local_graph[creator.name].append(query.name)
+                    local_in_degree[query.name] += 1
 
         for dep in query.dependencies:
             # Check if dependency is produced by another query in this block
@@ -384,7 +384,7 @@ class BlockOrchestrator:
                 if failed_queries:
                     if len(completed_futures) < len(future_to_query):
                         self._cancel_remaining_futures(future_to_query, completed_futures)
-                    raise UserException(f"Query execution failed:\n  - {chr(10).join(failed_queries)}")
+                    raise UserException(f"Query execution failed:\n  - {'\n  - '.join(failed_queries)}")
 
                 return query_times
 
