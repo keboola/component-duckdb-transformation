@@ -52,10 +52,12 @@ class TestExecutionPlanVisualizationAction(unittest.TestCase):
             "## 📊 Execution Summary\n\n"
             "- **Total Queries:** 4\n"
             "- **Total Batches:** 4\n"
+            "- **Total Blocks:** 2\n"
             "- **Max Parallel Workers:** 4\n\n"
             "## 🔄 Execution Flow\n\n"
-            "### 🧱 Block: B1\n\n"
-            "#### ⚡ Batch (Parallel Execution)\n\n"
+            "### 🧱 Block 1: B1\n\n"
+            "**Block contains 3 batches with 3 queries total**\n\n"
+            "#### 🔄 Batch 1 (Sequential - 1 query)\n\n"
             "- **C1_0** (Code: C1)\n"
         )
         # Only verify the start to keep the test robust to ordering of later sections

@@ -9,7 +9,8 @@ DUCK_DB_DIR = os.path.join(os.environ.get("TMPDIR", "/tmp"), "duckdb")
 
 def init_connection(threads, max_memory, db_path) -> DuckDBPyConnection:
     """
-    Returns connection to temporary DuckDB database with advanced optimizations
+    Returns connection to temporary DuckDB database with advanced optimizations.
+    DuckDB supports thread-safe access to a single connection.
     """
     os.makedirs(DUCK_DB_DIR, exist_ok=True)
     # Enhanced configuration with performance optimizations
@@ -23,6 +24,7 @@ def init_connection(threads, max_memory, db_path) -> DuckDBPyConnection:
         # Performance optimizations
         "preserve_insertion_order": False,  # Faster inserts
     }
+
     logging.info(f"Initializing DuckDB connection with config: {config}")
     conn = duckdb.connect(database=db_path, config=config)
     return conn

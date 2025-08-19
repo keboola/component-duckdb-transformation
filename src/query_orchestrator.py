@@ -25,6 +25,61 @@ class Query:
 
 
 @dataclass
+class Batch:
+    """A batch of queries that can be executed in parallel."""
+
+    queries: list[Query]
+
+    def __len__(self) -> int:
+        return len(self.queries)
+
+    def __iter__(self):
+        return iter(self.queries)
+
+    def __getitem__(self, index):
+        return self.queries[index]
+
+
+@dataclass
+class Block:
+    """A block containing batches that must be executed sequentially."""
+
+    name: str
+    batches: list[Batch]
+
+    def __len__(self) -> int:
+        return len(self.batches)
+
+    def __iter__(self):
+        return iter(self.batches)
+
+    @property
+    def total_queries(self) -> int:
+        return sum(len(batch) for batch in self.batches)
+
+
+@dataclass
+class ExecutionPlan:
+    """Complete execution plan with blocks that must be executed consecutively."""
+
+    blocks: list[Block]
+
+    def __len__(self) -> int:
+        return len(self.blocks)
+
+    def __iter__(self):
+        return iter(self.blocks)
+
+    @property
+    def total_queries(self) -> int:
+        return sum(block.total_queries for block in self.blocks)
+
+    @property
+    def total_batches(self) -> int:
+        return sum(len(block) for block in self.blocks)
+
+
+@dataclass
 class ExecutionStats:
     """Statistics from query execution."""
 
@@ -45,7 +100,7 @@ class ExecutionStats:
         return sum(self.batch_times) / len(self.batch_times) if self.batch_times else 0.0
 
 
-def _create_parallel_batches_for_block(block_queries: list[Query], producers: dict) -> list[list[Query]]:
+def _create_parallel_batches_for_block(block_queries: list[Query], producers: dict) -> list[Batch]:
     """
     Create parallel batches for queries within a single block.
     Uses topological sort to respect SQL dependencies.
@@ -55,8 +110,25 @@ def _create_parallel_batches_for_block(block_queries: list[Query], producers: di
     # Create local dependency graph and in-degree for this block only
     local_graph = defaultdict(list)
     local_in_degree = {q.name: 0 for q in block_queries}
+
+    # Build mapping of tables to CREATE queries in this block
+    table_creators = {}
+    for query in block_queries:
+        if "CREATE" in query.sql.upper():
+            for output in query.outputs:
+                table_creators[output] = query
+
     # Build local dependency graph for this block
     for query in block_queries:
+        # Add explicit INSERT → CREATE dependencies within the block
+        if "INSERT" in query.sql.upper():
+            for output in query.outputs:
+                if output in table_creators:
+                    creator = table_creators[output]
+                    # Add dependency: CREATE must run before INSERT for the same table
+                    local_graph[creator.name].append(query.name)
+                    local_in_degree[query.name] += 1
+
         for dep in query.dependencies:
             # Check if dependency is produced by another query in this block
             if dep in producers:
@@ -65,23 +137,9 @@ def _create_parallel_batches_for_block(block_queries: list[Query], producers: di
                 if producer.name in remaining:
                     local_graph[producer.name].append(query.name)
                     local_in_degree[query.name] += 1
-                    logging.debug(f"Local dependency: {producer.name} -> {query.name}")
-                else:
-                    logging.debug(
-                        f"External dependency: {query.name} depends on {dep}"
-                        f" (produced by {producer.name} in different block)"
-                    )
-            else:
-                logging.debug(f"Input dependency: {query.name} depends on {dep} (input table)")
-    # Debug: print local in-degree for this block
-    logging.debug("=== Local In-Degree for Block ===")
-    for name, degree in local_in_degree.items():
-        logging.debug(f"  {name}: {degree}")
     while remaining:
         # Find queries with no local dependencies
         ready = [remaining[name] for name in remaining if local_in_degree[name] == 0]
-        logging.debug(f"Ready queries: {[q.name for q in ready]}")
-        logging.debug(f"Remaining queries: {list(remaining.keys())}")
         if not ready:
             # Check for circular dependencies within block
             remaining_names = list(remaining.keys())
@@ -94,7 +152,7 @@ def _create_parallel_batches_for_block(block_queries: list[Query], producers: di
                 f"Circular dependency detected among queries in block: {', '.join(remaining_names)}. "
                 f"Check your SQL dependencies."
             )
-        batches.append(ready)
+        batches.append(Batch(queries=ready))
         # Remove processed queries and update local dependencies
         for query in ready:
             del remaining[query.name]
@@ -151,22 +209,42 @@ class BlockOrchestrator:
                 code_name=code_name,
             )
 
-    def build_block_execution_plan(self) -> list[list[Query]]:
+    def build_block_execution_plan(self) -> ExecutionPlan:
         """
         Build execution plan that respects block order but allows parallel execution within blocks.
         Creates DAG based on SQL dependencies.
+
+        Returns:
+            ExecutionPlan containing blocks that must be executed consecutively,
+            where each block contains batches that can run in parallel.
         """
         if not self.queries:
-            return []
+            return ExecutionPlan(blocks=[])
         # Group queries by block
         block_queries = defaultdict(list)
         for query in self.queries:
             block_queries[query.block_name].append(query)
         # Build producer mapping across all queries
+        # For tables that have both CREATE and INSERT, INSERT should be the producer
+        # (because reading from table usually needs data, not just empty structure)
         producers = {}
+        create_producers = {}
+        insert_producers = {}
+
         for query in self.queries:
             for output in query.outputs:
+                # Check if this is a CREATE or INSERT query
+                if "CREATE" in query.sql.upper():
+                    create_producers[output] = query
+                elif "INSERT" in query.sql.upper():
+                    insert_producers[output] = query
                 producers[output] = query
+
+        # Override with INSERT producers where available (data is more important than structure)
+        # Note: If multiple INSERTs exist for same table, last one becomes producer
+        # This is acceptable as dependency graph still ensures correct execution order
+        for table, insert_query in insert_producers.items():
+            producers[table] = insert_query
         # Build dependency graph
         graph = defaultdict(list)
         in_degree = {q.name: 0 for q in self.queries}
@@ -176,22 +254,15 @@ class BlockOrchestrator:
                     producer = producers[dep]
                     graph[producer.name].append(query.name)
                     in_degree[query.name] += 1
-                else:
-                    # If dependency is not produced by any query in this block,
-                    # it's an external dependency (input table) and doesn't create circular dependency
-                    logging.debug(f"Query '{query.name}' depends on external table '{dep}'")
-        # Debug: print global in-degree
-        logging.debug("=== Global In-Degree ===")
-        for name, degree in in_degree.items():
-            logging.debug(f"  {name}: {degree}")
+                # else: external dependency (input table)
         # Create execution plan: blocks in order, queries within blocks in parallel
-        execution_plan = []
+        blocks = []
         for block_name in block_queries.keys():
             block_queries_list = block_queries[block_name]
             # For each block, create batches of queries that can run in parallel
-            block_batches = _create_parallel_batches_for_block(block_queries_list, producers)
-            execution_plan.extend(block_batches)
-        return execution_plan
+            batches = _create_parallel_batches_for_block(block_queries_list, producers)
+            blocks.append(Block(name=block_name, batches=batches))
+        return ExecutionPlan(blocks=blocks)
 
     def execute(self) -> ExecutionStats:
         """Execute queries with block-based parallelization and return statistics."""
@@ -199,56 +270,56 @@ class BlockOrchestrator:
         # Reset statistics
         self.query_times.clear()
         self.batch_times.clear()
-        # Debug: print all detected dependencies
-        logging.debug("=== Detected Dependencies ===")
-        for query in self.queries:
-            logging.debug(f"Query '{query.name}' (Block: {query.block_name}, Code: {query.code_name}):")
-            logging.debug(f"  Dependencies: {query.dependencies}")
-            logging.debug(f"  Outputs: {query.outputs}")
-            logging.debug(f"  SQL: {query.sql[:100]}...")
-        # Debug: print producer mapping
-        logging.debug("=== Producer Mapping ===")
-        producers = {}
-        for query in self.queries:
-            for output in query.outputs:
-                producers[output] = query
-        for output, producer in producers.items():
-            logging.debug(f"  {output} -> {producer.name}")
-        batches = self.build_block_execution_plan()
-        logging.info(f"Executing {len(self.queries)} queries in {len(batches)} batches across blocks")
-        current_block = None
-        block_start_time = None
-        for i, batch in enumerate(batches, 1):
-            # Check if we're starting a new block
-            if batch and batch[0].block_name != current_block:
-                if current_block and block_start_time:
-                    block_time = time.time() - block_start_time
-                    logging.info(f"Block '{current_block}' completed in {block_time:.2f}s")
-                current_block = batch[0].block_name
-                block_start_time = time.time()
-                logging.info(f"Starting block '{current_block}'")
-            logging.info(f"Batch {i}: {[q.name for q in batch]} ({len(batch)} queries)")
-            batch_start = time.time()
-            if len(batch) == 1:
-                # Single query - execute directly
-                logging.info(f"Batch {i}: Executing 1 query sequentially")
-                query_time = self._execute_query(batch[0])
-                self.query_times.append(query_time)
-            else:
-                # Multiple queries - execute in parallel
-                query_times = self._execute_batch_parallel(batch)
-                self.query_times.extend(query_times)
-            batch_time = time.time() - batch_start
-            self.batch_times.append(batch_time)
-        # Handle last block
-        if current_block and block_start_time:
+        execution_plan = self.build_block_execution_plan()
+
+        block_count = len(execution_plan)
+        block_text = "block" if block_count == 1 else "blocks"
+        logging.info(
+            f"Executing {execution_plan.total_queries} queries in "
+            f"{execution_plan.total_batches} batches across {block_count} {block_text}"
+        )
+
+        batch_counter = 0
+        # Execute blocks consecutively
+        for block_index, block in enumerate(execution_plan):
+            if not block.batches:
+                continue
+
+            block_start_time = time.time()
+            logging.info(f"Starting block '{block.name}' ({block_index + 1}/{len(execution_plan)})")
+
+            # Execute all batches within this block
+            for batch in block:
+                batch_counter += 1
+                batch_start = time.time()
+                if len(batch) == 1:
+                    logging.info(
+                        f"Batch {batch_counter}/{execution_plan.total_batches}: Executing 1 query sequentially"
+                    )
+                    try:
+                        query_time = self._execute_query(batch[0])
+                        self.query_times.append(query_time)
+                    except Exception as e:
+                        raise UserException(f"Query '{batch[0].name}' failed: {e}")
+                else:
+                    logging.info(
+                        f"Batch {batch_counter}/{execution_plan.total_batches}: "
+                        f"Executing {len(batch)} queries in parallel"
+                    )
+                    query_times = self._execute_batch_parallel(batch)
+                    self.query_times.extend(query_times)
+                batch_time = time.time() - batch_start
+                self.batch_times.append(batch_time)
+
+            # Block completed
             block_time = time.time() - block_start_time
-            logging.info(f"Block '{current_block}' completed in {block_time:.2f}s")
+            logging.info(f"Block '{block.name}' completed in {block_time:.2f}s")
+
         total_time = time.time() - execution_start
         # Create statistics
         stats = ExecutionStats(
-            total_queries=len(self.queries),
-            total_batches=len(batches),
+            total_queries=execution_plan.total_queries,
+            total_batches=execution_plan.total_batches,
             total_execution_time=total_time,
             batch_times=self.batch_times.copy(),
             query_times=self.query_times.copy(),
@@ -257,78 +328,82 @@ class BlockOrchestrator:
         )
         return stats
 
+    @staticmethod
+    def _get_sql_preview(sql: str, max_length: int = 10) -> str:
+        """Get a preview of SQL query for logging purposes."""
+        cleaned_sql = sql.replace("\n", " ").strip()
+        if len(cleaned_sql) <= max_length:
+            return cleaned_sql
+        return cleaned_sql[:max_length] + "..."
+
     def _execute_query(self, query: Query) -> float:
         """Execute single query and return execution time."""
         thread_id = threading.current_thread().ident
         start = time.time()
-        try:
-            logging.info(f"Starting query '{query.name}' (Block: {query.block_name}) [Thread-{thread_id}]")
-            self.connection.execute(query.sql)
-            duration = time.time() - start
-            logging.info(
-                f"Query '{query.name}' (Block: {query.block_name}) completed in {duration:.2f}s [Thread-{thread_id}]"
-            )
-            return duration
-        except Exception as e:
-            # Don't log here - let the caller handle logging
-            raise UserException(f"Query '{query.name}' failed: {e}")
+        # DuckDB supports thread-safe access to a single connection
+        self.connection.execute(query.sql)
+        duration = time.time() - start
+        sql_preview = BlockOrchestrator._get_sql_preview(query.sql)
+        logging.info(f"Query '{query.name}' completed in {duration:.2f}s [Thread {thread_id}] - SQL: {sql_preview}")
+        return duration
 
-    def _execute_batch_parallel(self, batch: list[Query]) -> list[float]:
+    def _execute_batch_parallel(self, batch: Batch) -> list[float]:
         """Execute batch of queries in parallel and return list of execution times."""
         max_workers = min(self.max_workers, len(batch))
+
         if max_workers == 1:
-            logging.info(f"Batch: Executing {len(batch)} queries sequentially (1 thread)")
-            # For single thread, execute sequentially to avoid race conditions
             query_times = []
             for query in batch:
                 try:
                     execution_time = self._execute_query(query)
                     query_times.append(execution_time)
-                except UserException as e:
-                    # Log the error and stop immediately
-                    thread_id = threading.current_thread().ident
-                    logging.error(f"Query '{query.name}' failed: {e} [Thread-{thread_id}]")
-                    logging.error(f"Query '{query.name}' failed, stopping batch execution")
-                    raise UserException(f"Query '{query.name}' failed")
+                except Exception as e:
+                    raise UserException(f"Query '{query.name}' failed: {e}")
             return query_times
         else:
-            logging.info(f"Batch: Executing {len(batch)} queries in parallel using {max_workers} threads")
+            logging.info(f"Using {max_workers} threads")
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
                 # Submit all queries
                 future_to_query = {executor.submit(self._execute_query, query): query for query in batch}
                 query_times = []
-                failed_query = None
+                failed_queries = []
+                completed_futures = set()
+
                 # Wait for completion with better error handling
-                try:
-                    for future in as_completed(future_to_query):
-                        try:
-                            execution_time = future.result()  # Get execution time
-                            query_times.append(execution_time)
-                        except UserException as e:
-                            # Get the failed query name and log the error
-                            failed_query = future_to_query[future]
-                            thread_id = threading.current_thread().ident
-                            logging.error(f"Query '{failed_query.name}' failed: {e} [Thread-{thread_id}]")
-                            logging.error(
-                                f"Query '{failed_query.name}' failed, cancelling remaining "
-                                f"{len(future_to_query) - len(query_times)} queries"
-                            )
-                            # Cancel ALL remaining futures immediately
-                            cancelled_count = 0
-                            for f in future_to_query:
-                                if not f.done():
-                                    f.cancel()
-                                    cancelled_count += 1
-                                    logging.debug(f"Cancelled future for query: {future_to_query[f].name}")
-                            logging.info(f"Cancelled {cancelled_count} remaining queries")
-                            # Wait a bit for cancellations to take effect
-                            time.sleep(0.5)
-                            # Re-raise the exception
-                            raise UserException(f"Query '{failed_query.name}' failed")
-                except UserException:
-                    # Make sure all futures are cancelled before re-raising
-                    for f in future_to_query:
-                        if not f.done():
-                            f.cancel()
-                    raise
+                for future in as_completed(future_to_query):
+                    completed_futures.add(future)
+                    try:
+                        execution_time = future.result()
+                        query_times.append(execution_time)
+                    except Exception as e:
+                        failed_query = future_to_query[future]
+                        failed_queries.append(f"{failed_query.name}: {str(e)}")
+
+                if failed_queries:
+                    if len(completed_futures) < len(future_to_query):
+                        self._cancel_remaining_futures(future_to_query, completed_futures)
+                    successful_count = len(query_times)
+                    raise UserException(
+                        f"Query execution failed after {successful_count} successful "
+                        f"quer{'y' if successful_count == 1 else 'ies'}:\n  - {'\n  - '.join(failed_queries)}"
+                    )
+
                 return query_times
+
+    @staticmethod
+    def _cancel_remaining_futures(future_to_query: dict, completed_futures: set) -> int:
+        """Cancel all futures that haven't completed yet. Returns number of cancelled futures."""
+        cancelled_count = 0
+        for future in future_to_query:
+            if future not in completed_futures and not future.done():
+                try:
+                    if future.cancel():
+                        cancelled_count += 1
+                except Exception:
+                    pass
+
+        # Give a brief moment for cancellations to take effect
+        if cancelled_count > 0:
+            time.sleep(0.1)
+
+        return cancelled_count

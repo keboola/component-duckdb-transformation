@@ -40,37 +40,35 @@ class ExecutionPlanVisualizationAction:
         """Generate markdown execution plan from orchestrator."""
         markdown = "# 🚀 Execution Plan Visualization\n\n"
         # Build execution plan
-        batches = orchestrator.build_block_execution_plan()
+        execution_plan = orchestrator.build_block_execution_plan()
         markdown += "## 📊 Execution Summary\n\n"
-        markdown += f"- **Total Queries:** {len(orchestrator.queries)}\n"
-        markdown += f"- **Total Batches:** {len(batches)}\n"
+        markdown += f"- **Total Queries:** {execution_plan.total_queries}\n"
+        markdown += f"- **Total Batches:** {execution_plan.total_batches}\n"
+        markdown += f"- **Total Blocks:** {len(execution_plan)}\n"
         markdown += f"- **Max Parallel Workers:** {orchestrator.max_workers}\n\n"
         markdown += "## 🔄 Execution Flow\n\n"
-        # Group queries by block for display
-        block_queries = {}
-        for query in orchestrator.queries:
-            if query.block_name not in block_queries:
-                block_queries[query.block_name] = []
-            block_queries[query.block_name].append(query)
-        for block_name in block_queries.keys():
-            markdown += f"### 🧱 Block: {block_name}\n\n"
-            # Find batches for this block
-            block_batches = []
-            for batch in batches:
-                if any(q.block_name == block_name for q in batch):
-                    block_batches.append(batch)
-            for batch in block_batches:
-                markdown += "#### ⚡ Batch (Parallel Execution)\n\n"
+
+        # Iterate through blocks in execution order
+        for block_index, block in enumerate(execution_plan, 1):
+            markdown += f"### 🧱 Block {block_index}: {block.name}\n\n"
+            markdown += f"**Block contains {len(block)} batches with {block.total_queries} queries total**\n\n"
+
+            # Iterate through batches within this block
+            for batch_index, batch in enumerate(block, 1):
+                if len(batch) == 1:
+                    markdown += f"#### 🔄 Batch {batch_index} (Sequential - 1 query)\n\n"
+                else:
+                    markdown += f"#### ⚡ Batch {batch_index} (Parallel - {len(batch)} queries)\n\n"
+
                 for query in batch:
-                    if query.block_name == block_name:
-                        markdown += f"- **{query.name}** (Code: {query.code_name})\n"
-                        if query.dependencies:
-                            deps = ", ".join(sorted(query.dependencies))
-                            markdown += f"  - Dependencies: `{deps}`\n"
-                        if query.outputs:
-                            outputs = ", ".join(sorted(query.outputs))
-                            markdown += f"  - Outputs: `{outputs}`\n"
-                        markdown += "\n"
+                    markdown += f"- **{query.name}** (Code: {query.code_name})\n"
+                    if query.dependencies:
+                        deps = ", ".join(sorted(query.dependencies))
+                        markdown += f"  - Dependencies: `{deps}`\n"
+                    if query.outputs:
+                        outputs = ", ".join(sorted(query.outputs))
+                        markdown += f"  - Outputs: `{outputs}`\n"
+                    markdown += "\n"
             markdown += "---\n\n"
         markdown += "## 🔍 Dependency Analysis\n\n"
         # Show dependency graph
