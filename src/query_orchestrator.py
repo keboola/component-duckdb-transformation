@@ -123,7 +123,7 @@ def _create_parallel_batches_for_block(block_queries: list[Query], producers: di
             for output in query.outputs:
                 if output in table_creators:
                     creator = table_creators[output]
-                    # Add dependency: INSERT must run after CREATE for the same table
+                    # Add dependency: CREATE must run before INSERT for the same table
                     local_graph[creator.name].append(query.name)
                     local_in_degree[query.name] += 1
 
@@ -239,6 +239,8 @@ class BlockOrchestrator:
                 producers[output] = query
 
         # Override with INSERT producers where available (data is more important than structure)
+        # Note: If multiple INSERTs exist for same table, last one becomes producer
+        # This is acceptable as dependency graph still ensures correct execution order
         for table, insert_query in insert_producers.items():
             producers[table] = insert_query
         # Build dependency graph
