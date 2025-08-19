@@ -337,21 +337,16 @@ class BlockOrchestrator:
             return cleaned_sql
         return cleaned_sql[:max_length] + "..."
 
-    @staticmethod
-    def _execute_query(query: Query) -> float:
+    def _execute_query(self, query: Query) -> float:
         """Execute single query and return execution time."""
         thread_id = threading.current_thread().ident
         start = time.time()
-        try:
-            thread_connection = duckdb_client.get_thread_connection()
-            thread_connection.execute(query.sql)
-            duration = time.time() - start
-            sql_preview = BlockOrchestrator._get_sql_preview(query.sql)
-            logging.info(f"Query '{query.name}' completed in {duration:.2f}s [Thread {thread_id}] - SQL: {sql_preview}")
-            return duration
-        finally:
-            # Always close thread connection to prevent leaks
-            duckdb_client.close_thread_connection()
+        # DuckDB supports thread-safe access to a single connection
+        self.connection.execute(query.sql)
+        duration = time.time() - start
+        sql_preview = BlockOrchestrator._get_sql_preview(query.sql)
+        logging.info(f"Query '{query.name}' completed in {duration:.2f}s [Thread {thread_id}] - SQL: {sql_preview}")
+        return duration
 
     def _execute_batch_parallel(self, batch: Batch) -> list[float]:
         """Execute batch of queries in parallel and return list of execution times."""

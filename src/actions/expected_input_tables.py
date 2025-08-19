@@ -22,20 +22,15 @@ class ExpectedInputTablesAction:
         If available_tables is provided, validates against them and returns detailed report.
         """
         try:
-            # Two-pass analysis for better accuracy
+            # Single-pass analysis: collect both dependencies and outputs
             all_dependencies = set()
             all_outputs = set()
 
-            # First pass: collect ALL outputs from ALL queries
-            # This ensures we know about tables created in any block/query
-            for block, code, script, _ in self.sql_parser.iterate_blocks(blocks):
-                _, outputs = self.sql_parser.extract_dependencies_and_outputs(script)
-                all_outputs.update(outputs)
-
-            # Second pass: collect dependencies, now with full knowledge of outputs
-            for block, code, script, _ in self.sql_parser.iterate_blocks(blocks):
-                dependencies, _ = self.sql_parser.extract_dependencies_and_outputs(script)
+            # Single pass: collect both dependencies and outputs from all queries
+            for _, _, script, _ in self.sql_parser.iterate_blocks(blocks):
+                dependencies, outputs = self.sql_parser.extract_dependencies_and_outputs(script)
                 all_dependencies.update(dependencies)
+                all_outputs.update(outputs)
 
             # External tables are dependencies that are never created anywhere in the entire pipeline
             external_tables = all_dependencies - all_outputs

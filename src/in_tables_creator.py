@@ -127,8 +127,6 @@ class LocalTableCreator:
         try:
             # Table name should already be clean (without .csv) from get_input_tables_definitions
             table_name = in_table.destination.removesuffix(".csv")
-            self.logger.debug(f"Dropping existing view if exists: {table_name}")
-            self.connection.execute(f'DROP VIEW IF EXISTS "{table_name}"')
             quote_char = in_table.enclosure or '"'
             self.logger.debug(
                 f"Reading CSV file with parameters: delimiter='{in_table.delimiter or ','}',"
@@ -141,7 +139,7 @@ class LocalTableCreator:
                 header=self._has_header_in_file(in_table),
                 names=self._get_column_names(in_table),
                 dtype=dtype,
-            ).to_view(table_name)
+            ).to_view(table_name, replace=True)
             return CreatedTable(
                 name=table_name,
                 is_view=True,
