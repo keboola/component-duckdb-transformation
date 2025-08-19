@@ -52,8 +52,8 @@ class Component(ComponentBase):
         finally:
             try:
                 os.chdir(original_cwd)
-            except Exception:
-                pass
+            except Exception as e:
+                logging.warning(f"Failed to restore original working directory: {e}")
 
     def _setup_database_path(self):
         """Setup database paths and move existing database if needed."""
@@ -120,9 +120,26 @@ class Component(ComponentBase):
     @sync_action("expected_input_tables")
     def expected_input_tables(self):
         """
-        Returns a comma-separated list of required external input tables (filtering out likely CTE aliases).
+        Returns expected input tables with validation.
+        If input tables are available in configuration, validates against them and returns detailed report.
+        Otherwise returns a comma-separated list of required external input tables.
         """
         action = ExpectedInputTablesAction()
+
+        # Try to get available input tables - if they exist, do validation
+        try:
+            available_tables = self.get_input_tables_definitions()
+            if available_tables:
+                # Do validation with detailed report
+                return action.expected_input_tables(
+                    blocks=self.params.blocks,
+                    available_tables=available_tables
+                )
+        except Exception:
+            # If getting input tables fails, fall back to simple mode
+            pass
+
+        # Fall back to simple comma-separated list
         return action.expected_input_tables(self.params.blocks)
 
     def _create_input_tables(self):
