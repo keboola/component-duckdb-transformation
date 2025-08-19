@@ -64,7 +64,8 @@ class SQLParser:
                         table_name = statement.this.name
                         # INSERT modifies the table (output)
                         outputs.add(table_name)
-                        # Don't add as dependency here - orchestrator will handle CREATE→INSERT dependencies
+                        # Exclude INSERT target table from dependencies to prevent self-dependencies
+                        # (i.e., a table being both an output and a dependency in the same statement)
 
                 # Find other statements that modify tables (UPDATE, DELETE, etc.)
                 if isinstance(statement, (exp.Update, exp.Delete)):

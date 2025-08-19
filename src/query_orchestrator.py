@@ -123,7 +123,7 @@ def _create_parallel_batches_for_block(block_queries: list[Query], producers: di
             for output in query.outputs:
                 if output in table_creators:
                     creator = table_creators[output]
-                    if creator.name in remaining and creator.name != query.name:
+                    if creator.name != query.name:
                         local_graph[creator.name].append(query.name)
                         local_in_degree[query.name] += 1
 

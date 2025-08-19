@@ -105,12 +105,12 @@ class ExpectedInputTablesAction:
             lines.append("**Issues found:**")
 
             if missing_tables:
-                missing_list = ', '.join(f'`{t}`' for t in sorted(missing_tables))
-                lines.append(f"❌ **Missing tables ({len(missing_tables)}):** {missing_list}")
+                missing_table_list = ', '.join(f'`{t}`' for t in sorted(missing_tables))
+                lines.append(f"❌ **Missing tables ({len(missing_tables)}):** {missing_table_list}")
 
             if extra_tables:
-                extra_list = ', '.join(f'`{t}`' for t in sorted(extra_tables))
-                lines.append(f"⚠️ **Extra tables ({len(extra_tables)}):** {extra_list}")
+                extra_table_list = ', '.join(f'`{t}`' for t in sorted(extra_tables))
+                lines.append(f"⚠️ **Extra tables ({len(extra_tables)}):** {extra_table_list}")
         else:
             lines.append("✅ **All required tables are available!**")
 
