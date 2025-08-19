@@ -37,7 +37,8 @@ class SQLParser:
                     continue
 
                 # Find all table references (dependencies)
-                # But exclude INSERT target tables (they're handled separately)
+                # Exclude INSERT target tables from dependencies by identifying the target table
+                # (see logic below: insert_target is set for INSERT statements, and such tables are skipped in the loop)
                 insert_target = None
                 if isinstance(statement, exp.Insert):
                     if statement.this and hasattr(statement.this, "name"):

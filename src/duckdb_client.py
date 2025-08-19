@@ -10,6 +10,7 @@ DUCK_DB_DIR = os.path.join(os.environ.get("TMPDIR", "/tmp"), "duckdb")
 
 # Thread-local storage for connections
 _thread_local_storage = threading.local()
+_thread_connection_lock = threading.Lock()
 _main_db_path: Optional[str] = None
 _main_config: Optional[Dict] = None
 
@@ -48,15 +49,17 @@ def get_thread_connection() -> DuckDBPyConnection:
     to the same database to ensure thread-safety.
     """
     if not hasattr(_thread_local_storage, 'connection'):
-        if _main_db_path is None or _main_config is None:
-            raise RuntimeError("Main connection must be initialized first")
+        with _thread_connection_lock:
+            if not hasattr(_thread_local_storage, 'connection'):
+                if _main_db_path is None or _main_config is None:
+                    raise RuntimeError("Main connection must be initialized first")
 
-        thread_id = threading.current_thread().ident
-        logging.debug(f"Creating thread-local DuckDB connection for thread {thread_id}")
-        _thread_local_storage.connection = duckdb.connect(
-            database=_main_db_path,
-            config=_main_config
-        )
+                thread_id = threading.current_thread().ident
+                logging.debug(f"Creating thread-local DuckDB connection for thread {thread_id}")
+                _thread_local_storage.connection = duckdb.connect(
+                    database=_main_db_path,
+                    config=_main_config
+                )
 
     return _thread_local_storage.connection
 

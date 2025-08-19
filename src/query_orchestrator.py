@@ -341,8 +341,8 @@ class BlockOrchestrator:
         thread_id = threading.current_thread().ident
         start = time.time()
         try:
-            connection = duckdb_client.get_thread_connection()
-            connection.execute(query.sql)
+            thread_connection = duckdb_client.get_thread_connection()
+            thread_connection.execute(query.sql)
             duration = time.time() - start
             sql_preview = BlockOrchestrator._get_sql_preview(query.sql)
             logging.info(f"Query '{query.name}' completed in {duration:.2f}s [Thread {thread_id}] - SQL: {sql_preview}")
@@ -386,7 +386,11 @@ class BlockOrchestrator:
                 if failed_queries:
                     if len(completed_futures) < len(future_to_query):
                         self._cancel_remaining_futures(future_to_query, completed_futures)
-                    raise UserException(f"Query execution failed:\n  - {'\n  - '.join(failed_queries)}")
+                    successful_count = len(query_times)
+                    raise UserException(
+                        f"Query execution failed after {successful_count} successful "
+                        f"quer{'y' if successful_count == 1 else 'ies'}:\n  - {'\n  - '.join(failed_queries)}"
+                    )
 
                 return query_times
 
