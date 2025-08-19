@@ -28,6 +28,7 @@ class Query:
 @dataclass
 class Batch:
     """A batch of queries that can be executed in parallel."""
+
     queries: list[Query]
 
     def __len__(self) -> int:
@@ -43,6 +44,7 @@ class Batch:
 @dataclass
 class Block:
     """A block containing batches that must be executed sequentially."""
+
     name: str
     batches: list[Batch]
 
@@ -60,6 +62,7 @@ class Block:
 @dataclass
 class ExecutionPlan:
     """Complete execution plan with blocks that must be executed consecutively."""
+
     blocks: list[Block]
 
     def __len__(self) -> int:
@@ -112,14 +115,14 @@ def _create_parallel_batches_for_block(block_queries: list[Query], producers: di
     # Build mapping of tables to CREATE queries in this block
     table_creators = {}
     for query in block_queries:
-        if 'CREATE' in query.sql.upper():
+        if "CREATE" in query.sql.upper():
             for output in query.outputs:
                 table_creators[output] = query
 
     # Build local dependency graph for this block
     for query in block_queries:
         # Add explicit INSERT → CREATE dependencies within the block
-        if 'INSERT' in query.sql.upper():
+        if "INSERT" in query.sql.upper():
             for output in query.outputs:
                 if output in table_creators:
                     creator = table_creators[output]
@@ -232,9 +235,9 @@ class BlockOrchestrator:
         for query in self.queries:
             for output in query.outputs:
                 # Check if this is a CREATE or INSERT query
-                if 'CREATE' in query.sql.upper():
+                if "CREATE" in query.sql.upper():
                     create_producers[output] = query
-                elif 'INSERT' in query.sql.upper():
+                elif "INSERT" in query.sql.upper():
                     insert_producers[output] = query
                 producers[output] = query
 
@@ -292,8 +295,7 @@ class BlockOrchestrator:
                 batch_start = time.time()
                 if len(batch) == 1:
                     logging.info(
-                        f"Batch {batch_counter}/{execution_plan.total_batches}: "
-                        f"Executing 1 query sequentially"
+                        f"Batch {batch_counter}/{execution_plan.total_batches}: Executing 1 query sequentially"
                     )
                     try:
                         query_time = self._execute_query(batch[0])
@@ -330,7 +332,7 @@ class BlockOrchestrator:
     @staticmethod
     def _get_sql_preview(sql: str, max_length: int = 10) -> str:
         """Get a preview of SQL query for logging purposes."""
-        cleaned_sql = sql.replace('\n', ' ').strip()
+        cleaned_sql = sql.replace("\n", " ").strip()
         if len(cleaned_sql) <= max_length:
             return cleaned_sql
         return cleaned_sql[:max_length] + "..."

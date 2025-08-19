@@ -55,7 +55,10 @@ class ExpectedInputTablesAction:
     def _validate_against_available_tables(self, expected_tables, available_tables):
         """Validate expected tables against available input tables."""
         # Get available table names (remove .csv suffix)
-        available_table_names = {table.name.removesuffix('.csv') for table in available_tables}
+        available_table_names = {
+            table.destination.removesuffix(".csv").removesuffix(".parquet").removesuffix(".parq")
+            for table in available_tables
+        }
 
         # Compare expected vs available
         missing_tables = expected_tables - available_table_names
@@ -105,11 +108,11 @@ class ExpectedInputTablesAction:
             lines.append("**Issues found:**")
 
             if missing_tables:
-                missing_table_list = ', '.join(f'`{t}`' for t in sorted(missing_tables))
+                missing_table_list = ", ".join(f"`{t}`" for t in sorted(missing_tables))
                 lines.append(f"❌ **Missing tables ({len(missing_tables)}):** {missing_table_list}")
 
             if extra_tables:
-                extra_table_list = ', '.join(f'`{t}`' for t in sorted(extra_tables))
+                extra_table_list = ", ".join(f"`{t}`" for t in sorted(extra_tables))
                 lines.append(f"⚠️ **Extra tables ({len(extra_tables)}):** {extra_table_list}")
         else:
             lines.append("✅ **All required tables are available!**")

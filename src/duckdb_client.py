@@ -48,28 +48,25 @@ def get_thread_connection() -> DuckDBPyConnection:
     Get thread-local DuckDB connection. Each thread gets its own connection
     to the same database to ensure thread-safety.
     """
-    if not hasattr(_thread_local_storage, 'connection'):
+    if not hasattr(_thread_local_storage, "connection"):
         with _thread_connection_lock:
-            if not hasattr(_thread_local_storage, 'connection'):
+            if not hasattr(_thread_local_storage, "connection"):
                 if _main_db_path is None or _main_config is None:
                     raise RuntimeError("Main connection must be initialized first")
 
                 thread_id = threading.current_thread().ident
                 logging.debug(f"Creating thread-local DuckDB connection for thread {thread_id}")
-                _thread_local_storage.connection = duckdb.connect(
-                    database=_main_db_path,
-                    config=_main_config
-                )
+                _thread_local_storage.connection = duckdb.connect(database=_main_db_path, config=_main_config)
 
     return _thread_local_storage.connection
 
 
 def close_thread_connection():
     """Close thread-local connection if it exists."""
-    if hasattr(_thread_local_storage, 'connection'):
+    if hasattr(_thread_local_storage, "connection"):
         try:
             _thread_local_storage.connection.close()
-            delattr(_thread_local_storage, 'connection')
+            delattr(_thread_local_storage, "connection")
         except Exception as e:
             logging.warning(f"Error closing thread connection: {e}")
 
