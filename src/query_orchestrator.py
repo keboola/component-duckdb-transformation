@@ -9,7 +9,6 @@ from dataclasses import dataclass
 
 from keboola.component.exceptions import UserException
 
-import duckdb_client
 from sql_parser import SQLParser
 
 
