@@ -1,7 +1,6 @@
 """Local file table creator."""
 
 import logging
-import os
 from csv import DictReader
 from dataclasses import dataclass
 
@@ -21,10 +20,11 @@ class CreatedTable:
 class LocalTableCreator:
     """Create tables from local files (CSV, Parquet)."""
 
-    def __init__(self, connection, dtypes_infer=True):
+    def __init__(self, connection, file_type, dtypes_infer=True):
         self.connection = connection
         self.logger = logging.getLogger(self.__class__.__name__)
         self.dtypes_infer = dtypes_infer
+        self.file_type = file_type.lower()
 
     def create_table(self, in_table: TableDefinition) -> CreatedTable:
         """Create table from local file."""
@@ -34,14 +34,10 @@ class LocalTableCreator:
         # Get local file path
         path = self._get_local_file_path(in_table)
         # Create table
-        ext = os.path.splitext(path)[1].lower()
-        if ext in (".parquet", ".parq"):
+        if self.file_type == "parquet":
             return self._create_table_from_parquet(in_table, path)
         else:
-            try:
-                return self._create_view_from_csv(in_table, path, dtype)
-            except duckdb.IOException as e:
-                raise UserException(f"Unsupported file type for table {in_table.name}, error: {e}")
+            return self._create_view_from_csv(in_table, path, dtype)
 
     def _get_local_file_path(self, in_table: TableDefinition) -> str:
         """Get the appropriate file path for local file processing."""
@@ -109,16 +105,15 @@ class LocalTableCreator:
     def _create_parquet_table_without_casting(self, in_table: TableDefinition, path) -> CreatedTable:
         """Create Parquet table without type casting."""
         self.logger.debug("Processing Parquet without type casting")
-        table_name = in_table.destination_table_name.removesuffix(".parquet").removesuffix(".parq")
-        safe_path = path.replace("'", "''")
+        path = in_table.full_path
         self.connection.execute(
             f"""
-                CREATE OR REPLACE TABLE '{table_name}' AS
-                FROM read_parquet('{safe_path}')
+                CREATE OR REPLACE TABLE '{in_table.destination}' AS
+                FROM read_parquet('{path}/*.parquet')
             """
         )
         return CreatedTable(
-            name=table_name,
+            name=in_table.destination,
             is_view=False,
         )
 

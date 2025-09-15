@@ -32,6 +32,7 @@ class Component(ComponentBase):
         self._connection = duckdb_client.init_connection(
             self.params.threads, self.params.max_memory_mb, self._db_out_path
         )
+        self.in_tables_mapping = self.configuration.tables_input_mapping
 
     def run(self):
         original_cwd = os.getcwd()
@@ -167,7 +168,8 @@ class Component(ComponentBase):
         start_time = time.time()
 
         for in_table in self._get_input_tables_definitions():
-            creator = LocalTableCreator(self._connection, self.params.dtypes_infer)
+            file_type = [t for t in self.in_tables_mapping if t.source == in_table.id][0].file_type
+            creator = LocalTableCreator(self._connection, file_type, self.params.dtypes_infer)
             result = creator.create_table(in_table)
             logging.info(f"Input table created: {result.name} (is_view={result.is_view})")
         logging.debug(f"Input tables created in {time.time() - start_time:.2f} seconds")
