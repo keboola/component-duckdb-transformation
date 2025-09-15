@@ -31,15 +31,14 @@ class LocalTableCreator:
         self.logger.debug(f"Processing local file for table: {in_table.name}")
         # Get data types
         dtype = self._get_data_types(in_table)
-        # Get local file path
-        path = self._get_local_file_path(in_table)
+
         # Create table
         if self.file_type == "parquet":
-            return self._create_table_from_parquet(in_table, path)
+            return self._create_table_from_parquet(in_table)
         else:
-            return self._create_view_from_csv(in_table, path, dtype)
+            return self._create_view_from_csv(in_table, dtype)
 
-    def _get_local_file_path(self, in_table: TableDefinition) -> str:
+    def _get_local_csv_file_path(self, in_table: TableDefinition) -> str:
         """Get the appropriate file path for local file processing."""
         if in_table.is_sliced:
             path = f"{in_table.full_path}/*.csv"
@@ -59,15 +58,15 @@ class LocalTableCreator:
             self.logger.debug("Using automatic dtype inference")
         return dtype
 
-    def _create_table_from_parquet(self, in_table: TableDefinition, path) -> CreatedTable:
+    def _create_table_from_parquet(self, in_table: TableDefinition) -> CreatedTable:
         """Create table from Parquet files in S3 with optional type casting."""
         self.logger.debug(f"Creating table from Parquet files: {in_table.name}")
         # Check if type casting is needed for Snowflake INTEGER columns
         to_cast = self._get_columns_to_cast(in_table)
         if to_cast:
-            return self._create_parquet_table_with_casting(in_table, path, to_cast)
+            return self._create_parquet_table_with_casting(in_table, to_cast)
         else:
-            return self._create_parquet_table_without_casting(in_table, path)
+            return self._create_parquet_table_without_casting(in_table)
 
     def _get_columns_to_cast(self, in_table: TableDefinition) -> list[str]:
         """Get list of columns that need to be cast to BIGINT."""
@@ -82,11 +81,11 @@ class LocalTableCreator:
         self.logger.debug(f"Columns to cast to BIGINT: {to_cast}")
         return to_cast
 
-    def _create_parquet_table_with_casting(self, in_table: TableDefinition, path, to_cast: list[str]) -> CreatedTable:
+    def _create_parquet_table_with_casting(self, in_table: TableDefinition, to_cast: list[str]) -> CreatedTable:
         """Create Parquet table with type casting for INTEGER columns."""
         self.logger.debug("Processing Parquet with type casting")
-        safe_path = path.replace("'", "''")
-        rel = self.connection.sql(f"FROM read_parquet('{safe_path}')")
+        path = in_table.full_path
+        rel = self.connection.sql(f"FROM read_parquet('{path}/*.parquet')")
         # Use table name without parquet extension to avoid schema parsing (e.g., 'pq.parquet' -> 'pq')
         table_name = in_table.name.removesuffix(".parquet").removesuffix(".parq")
         columns = []
@@ -102,7 +101,7 @@ class LocalTableCreator:
             is_view=False,
         )
 
-    def _create_parquet_table_without_casting(self, in_table: TableDefinition, path) -> CreatedTable:
+    def _create_parquet_table_without_casting(self, in_table: TableDefinition) -> CreatedTable:
         """Create Parquet table without type casting."""
         self.logger.debug("Processing Parquet without type casting")
         path = in_table.full_path
@@ -117,9 +116,10 @@ class LocalTableCreator:
             is_view=False,
         )
 
-    def _create_view_from_csv(self, in_table: TableDefinition, path: str, dtype: dict) -> CreatedTable:
+    def _create_view_from_csv(self, in_table: TableDefinition, dtype: dict) -> CreatedTable:
         """Create table from local file with error handling."""
         try:
+            path = self._get_local_csv_file_path(in_table)
             # Table name should already be clean (without .csv) from get_input_tables_definitions
             table_name = in_table.destination.removesuffix(".csv")
             quote_char = in_table.enclosure or '"'
