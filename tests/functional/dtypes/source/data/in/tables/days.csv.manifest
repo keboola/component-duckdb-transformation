@@ -1,1 +1,9 @@
-{"destination":"in.c-days.csv","incremental":false, "columns":["id","name"]}
+{
+  "id": "in.c-days.csv",
+  "destination": "in.c-days.csv",
+  "incremental": false,
+  "columns": [
+    "id",
+    "name"
+  ]
+}

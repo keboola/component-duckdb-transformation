@@ -27,12 +27,13 @@
       "tables": [
         {
           "source": "in.c-pq",
-          "destination": "pq",
+          "destination": "pq.parquet",
           "where_column": "",
           "where_values": [],
           "where_operator": "eq",
           "columns": [],
-          "keep_internal_timestamp_column": false
+          "keep_internal_timestamp_column": false,
+          "file_type": "parquet"
         }
       ]
     }
