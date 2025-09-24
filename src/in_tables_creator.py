@@ -51,7 +51,11 @@ class LocalTableCreator:
     def _get_data_types(self, in_table: TableDefinition) -> dict:
         """Get data types for table creation."""
         if not self.dtypes_infer:
-            dtype = {key: value.data_types.get("base").dtype for key, value in in_table.schema.items()}
+            #  TODO: solve properly handling the NUMBER(38,0) from Snowflake with integer base type
+            dtype = {
+                k: ("BIGINT" if v.data_types.get("base").dtype == "INTEGER" else v.data_types.get("base").dtype)
+                for k, v in in_table.schema.items()
+            }
             self.logger.debug(f"Using custom dtypes: {dtype}")
         else:
             dtype = None
