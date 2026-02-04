@@ -7,10 +7,10 @@ requires-python = ">=3.13"
 dependencies = [
     "black>=25.1.0",
     "datadirtest",
-    "duckdb>=1.3.1",
+    "duckdb>=1.4.4",
     "flake8>=7.3.0",
     "freezegun>=1.5.2",
-    "keboola-component>=1.6.10",
+    "keboola-component>=1.8.3",
     "keboola-http-client>=1.0.1",
     "keboola-utils>=1.1.0",
     "mock>=5.2.0",
