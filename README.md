@@ -100,6 +100,24 @@ Output
 
 Exports tables to CSV files with manifests into `out/tables` and file manifests into `out/files`.
 
+SQL Syntax and Naming Conventions
+==================================
+
+**Table Name Case Sensitivity:**
+- **Unquoted table names** are automatically converted to lowercase by DuckDB
+  - Example: `SELECT * FROM MyTable` references table `mytable`
+- **Quoted table names** are case-sensitive
+  - Example: `SELECT * FROM "MyTable"` references exactly `MyTable` (case-sensitive)
+
+**Column Name Case Sensitivity:**
+- **Columns are always case-sensitive** regardless of quoting
+  - Example: `SELECT columnName` and `SELECT ColumnName` refer to different columns
+
+**Best Practices:**
+- Use consistent casing for table and column names
+- When referencing tables with mixed case (or any non-alphanumeric characters) always use quotes: `"TaBlE-stage"`
+- Be aware that input table names are typically lowercase unless explicitly quoted
+
 Development
 -----------
 
