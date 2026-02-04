@@ -1,1 +1,1 @@
-date_col,hour_bucket,category,total_records,unique_users,avg_transaction,total_volume,prev_day_records,growth_rate,transaction_volatility,value_size_correlation,active_transactions,weekend_avg,weekday_avg,business_hours_transactions,off_hours_transactions
+"date_col","hour_bucket","category","total_records","unique_users","avg_transaction","total_volume","prev_day_records","growth_rate","transaction_volatility","value_size_correlation","active_transactions","weekend_avg","weekday_avg","business_hours_transactions","off_hours_transactions"

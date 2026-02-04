@@ -96,7 +96,7 @@ class LocalTableCreator:
         columns = []
         for col in rel.columns:
             if col in to_cast:
-                columns.append(duckdb.ColumnExpression(col).cast(duckdb.typing.BIGINT).alias(col))
+                columns.append(duckdb.ColumnExpression(col).cast(duckdb.sqltype("BIGINT")).alias(col))
             else:
                 columns.append(duckdb.ColumnExpression(col))
         self.connection.execute(f'DROP TABLE IF EXISTS "{table_name}"')
