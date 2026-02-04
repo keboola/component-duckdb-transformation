@@ -1,1 +1,1 @@
-month,category,record_count,total_value,avg_value,max_value,min_value,stddev_value,unique_users,active_records,avg_bigint,total_double,prev_month_records,month_over_month_growth,q1_value,median_value,q3_value,p95_value
+"month","category","record_count","total_value","avg_value","max_value","min_value","stddev_value","unique_users","active_records","avg_bigint","total_double","prev_month_records","month_over_month_growth","q1_value","median_value","q3_value","p95_value"
