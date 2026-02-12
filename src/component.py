@@ -149,7 +149,7 @@ class Component(ComponentBase):
             destination_table_name = None
             for table in self.configuration.tables_input_mapping:
                 if table_def.id:
-                    if table.source in table_def.id:
+                    if table.source == table_def.id:
                         destination_table_name = table.destination
                         break
 

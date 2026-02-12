@@ -13,8 +13,9 @@ env:
   KBC_DEVELOPERPORTAL_PASSWORD: ${{ secrets.KBC_DEVELOPERPORTAL_PASSWORD }}
 
   # (Optional) Test KBC project: https://connection.keboola.com/admin/projects/0000
-  KBC_TEST_PROJECT_CONFIGS: "" # space separated list of config ids
+  KBC_TEST_PROJECT_CONFIGS: "01kh8s6azaeyr2wmy6xvpm1g0h" # space separated list of config ids
   KBC_STORAGE_TOKEN: ${{ secrets.KBC_STORAGE_TOKEN }} # required for running KBC tests
+  KBC_HOST: "connection.us-east4.gcp.keboola.com" # Keboola host
 
 jobs:
   push_event_info:
@@ -142,6 +143,7 @@ jobs:
         uses: keboola/action-run-configs-parallel@master
         with:
           token: ${{ secrets.KBC_STORAGE_TOKEN }}
+          host: ${{ env.KBC_HOST }}
           componentId: ${{ env.KBC_DEVELOPERPORTAL_APP }}
           tag: ${{ needs.push_event_info.outputs.app_image_tag }}
           configs: ${{ env.KBC_TEST_PROJECT_CONFIGS }}
