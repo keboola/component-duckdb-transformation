@@ -130,7 +130,7 @@ jobs:
     name: Run KBC Tests
     needs:
       - push_event_info
-      - build
+      - push
     runs-on: ubuntu-latest
     steps:
       - name: Set up environment variables
@@ -154,7 +154,6 @@ jobs:
     needs:
       - push_event_info
       - tests
-      - tests-kbc
     env:
       DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
     steps:
@@ -193,8 +192,7 @@ jobs:
       KBC_DEVELOPERPORTAL_PASSWORD: ${{ secrets.KBC_DEVELOPERPORTAL_PASSWORD }}
     needs:
       - push_event_info
-      - build
-      - push
+      - tests-kbc
     if: needs.push_event_info.outputs.is_deploy_ready == 'true'
     runs-on: ubuntu-latest
     steps:
@@ -213,8 +211,7 @@ jobs:
       KBC_DEVELOPERPORTAL_PASSWORD: ${{ secrets.KBC_DEVELOPERPORTAL_PASSWORD }}
     needs:
       - push_event_info
-      - build
-      - push
+      - tests-kbc
     runs-on: ubuntu-latest
     if: needs.push_event_info.outputs.is_deploy_ready == 'true'
     steps:
