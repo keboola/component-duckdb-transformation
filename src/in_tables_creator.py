@@ -2,7 +2,6 @@
 
 import logging
 import os
-from csv import DictReader
 from dataclasses import dataclass
 
 import duckdb
@@ -136,7 +135,7 @@ class LocalTableCreator:
                 delimiter=in_table.delimiter or ",",
                 quotechar=in_table.enclosure or '"',
                 header=self._has_header_in_file(in_table),
-                names=self._get_column_names(in_table),
+                names=in_table.column_names or None,
                 dtype=dtype,
             ).to_view(f"'{table_name}'", replace=True)
             return CreatedTable(
@@ -161,15 +160,3 @@ class LocalTableCreator:
         else:
             has_header = True
         return has_header
-
-    @staticmethod
-    def _get_column_names(t: TableDefinition) -> list[str]:
-        """Get table header from the file or from the manifest."""
-        header = None
-        if t.is_sliced or t.column_names:
-            header = t.column_names
-        else:
-            with open(t.full_path, encoding="utf-8") as f:
-                reader = DictReader(f, lineterminator="\n", delimiter=t.delimiter, quotechar=t.enclosure)
-                header = reader.fieldnames
-        return header
