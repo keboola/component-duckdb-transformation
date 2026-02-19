@@ -25,9 +25,14 @@ class LocalTableCreator:
         self.logger = logging.getLogger(self.__class__.__name__)
         self.dtypes_infer = dtypes_infer
 
-    def create_table(self, in_table: TableDefinition) -> CreatedTable:
-        """Create table from local file."""
-        self.logger.debug(f"Processing local file for table: {in_table.name}")
+    def create_table(self, in_table: TableDefinition, table_name: str) -> CreatedTable:
+        """Create table from local file.
+
+        Args:
+            in_table: Table definition with file path and metadata.
+            table_name: Name for the DuckDB table/view (from input mapping destination).
+        """
+        self.logger.debug(f"Processing local file for table: {table_name}")
         # Get data types
         dtype = self._get_data_types(in_table)
         # Get local file path
@@ -35,12 +40,12 @@ class LocalTableCreator:
         # Create table
         ext = os.path.splitext(path)[1].lower()
         if ext in (".parquet", ".parq"):
-            return self._create_table_from_parquet(in_table, path)
+            return self._create_table_from_parquet(table_name, in_table, path)
         else:
             try:
-                return self._create_view_from_csv(in_table, path, dtype)
+                return self._create_view_from_csv(table_name, in_table, path, dtype)
             except duckdb.IOException as e:
-                raise UserException(f"Unsupported file type for table {in_table.name}, error: {e}")
+                raise UserException(f"Unsupported file type for table {table_name}, error: {e}")
 
     def _get_local_file_path(self, in_table: TableDefinition) -> str:
         """Get the appropriate file path for local file processing."""
@@ -62,15 +67,15 @@ class LocalTableCreator:
             self.logger.debug("Using automatic dtype inference")
         return dtype
 
-    def _create_table_from_parquet(self, in_table: TableDefinition, path) -> CreatedTable:
-        """Create table from Parquet files in S3 with optional type casting."""
-        self.logger.debug(f"Creating table from Parquet files: {in_table.name}")
+    def _create_table_from_parquet(self, table_name: str, in_table: TableDefinition, path) -> CreatedTable:
+        """Create table from Parquet files with optional type casting."""
+        self.logger.debug(f"Creating table from Parquet files: {table_name}")
         # Check if type casting is needed for Snowflake INTEGER columns
         to_cast = self._get_columns_to_cast(in_table)
         if to_cast:
-            return self._create_parquet_table_with_casting(in_table, path, to_cast)
+            return self._create_parquet_table_with_casting(table_name, path, to_cast)
         else:
-            return self._create_parquet_table_without_casting(in_table, path)
+            return self._create_parquet_table_without_casting(table_name, path)
 
     def _get_columns_to_cast(self, in_table: TableDefinition) -> list[str]:
         """Get list of columns that need to be cast to BIGINT."""
@@ -85,12 +90,11 @@ class LocalTableCreator:
         self.logger.debug(f"Columns to cast to BIGINT: {to_cast}")
         return to_cast
 
-    def _create_parquet_table_with_casting(self, in_table: TableDefinition, path, to_cast: list[str]) -> CreatedTable:
+    def _create_parquet_table_with_casting(self, table_name: str, path, to_cast: list[str]) -> CreatedTable:
         """Create Parquet table with type casting for INTEGER columns."""
         self.logger.debug("Processing Parquet with type casting")
         safe_path = path.replace("'", "''")
         rel = self.connection.sql(f"FROM read_parquet('{safe_path}')")
-        table_name = in_table.name
         cast_exprs = []
         for col in rel.columns:
             if col in to_cast:
@@ -106,10 +110,9 @@ class LocalTableCreator:
             is_view=False,
         )
 
-    def _create_parquet_table_without_casting(self, in_table: TableDefinition, path) -> CreatedTable:
+    def _create_parquet_table_without_casting(self, table_name: str, path) -> CreatedTable:
         """Create Parquet table without type casting."""
         self.logger.debug("Processing Parquet without type casting")
-        table_name = in_table.name
         safe_path = path.replace("'", "''")
         self.connection.execute(
             f"""
@@ -122,10 +125,9 @@ class LocalTableCreator:
             is_view=False,
         )
 
-    def _create_view_from_csv(self, in_table: TableDefinition, path: str, dtype: dict) -> CreatedTable:
-        """Create table from local file with error handling."""
+    def _create_view_from_csv(self, table_name: str, in_table: TableDefinition, path: str, dtype: dict) -> CreatedTable:
+        """Create view from CSV file with error handling."""
         try:
-            table_name = in_table.name
             quote_char = in_table.enclosure or '"'
             self.logger.debug(
                 f"Reading CSV file with parameters: delimiter='{in_table.delimiter or ','}',"
@@ -144,11 +146,11 @@ class LocalTableCreator:
                 is_view=True,
             )
         except duckdb.IOException as e:
-            self.logger.error(f"DuckDB IO error importing table {in_table.name}: {e}")
-            raise UserException(f"Error importing table {in_table.name}: {e}")
+            self.logger.error(f"DuckDB IO error importing table {table_name}: {e}")
+            raise UserException(f"Error importing table {table_name}: {e}")
         except Exception as e:
-            self.logger.error(f"Unexpected error importing table {in_table.name}: {e}")
-            raise UserException(f"Unexpected error importing table {in_table.name}: {e}")
+            self.logger.error(f"Unexpected error importing table {table_name}: {e}")
+            raise UserException(f"Unexpected error importing table {table_name}: {e}")
 
     @staticmethod
     def _has_header_in_file(t: TableDefinition) -> bool:

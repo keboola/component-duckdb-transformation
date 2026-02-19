@@ -388,9 +388,11 @@ class BlockOrchestrator:
                     if len(completed_futures) < len(future_to_query):
                         self._cancel_remaining_futures(future_to_query, completed_futures)
                     successful_count = len(query_times)
+                    separator = "\n  - "
                     raise UserException(
                         f"Query execution failed after {successful_count} successful "
-                        f"quer{'y' if successful_count == 1 else 'ies'}:\n  - {'\n  - '.join(failed_queries)}"
+                        f"quer{'y' if successful_count == 1 else 'ies'}:"
+                        f"{separator}{separator.join(failed_queries)}"
                     )
 
                 return query_times
