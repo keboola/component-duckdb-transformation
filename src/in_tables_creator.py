@@ -131,13 +131,13 @@ class LocalTableCreator:
             quote_char = in_table.enclosure or '"'
             self.logger.debug(
                 f"Reading CSV file with parameters: delimiter='{in_table.delimiter or ','}',"
-                f" quotechar='{quote_char}', header={self._has_header_in_file(in_table)}"
+                f" quotechar='{quote_char}', header={in_table.has_header}"
             )
             self.connection.read_csv(
                 path_or_buffer=path,
                 delimiter=in_table.delimiter or ",",
                 quotechar=in_table.enclosure or '"',
-                header=self._has_header_in_file(in_table),
+                header=in_table.has_header,
                 names=in_table.column_names or None,
                 dtype=dtype,
             ).to_view(table_name, replace=True)
@@ -151,15 +151,3 @@ class LocalTableCreator:
         except Exception as e:
             self.logger.error(f"Unexpected error importing table {table_name}: {e}")
             raise UserException(f"Unexpected error importing table {table_name}: {e}")
-
-    @staticmethod
-    def _has_header_in_file(t: TableDefinition) -> bool:
-        """Determine if file has header."""
-        is_input_mapping_manifest = t.stage == "in"
-        if t.is_sliced:
-            has_header = False
-        elif t.column_names and not is_input_mapping_manifest:
-            has_header = False
-        else:
-            has_header = True
-        return has_header
