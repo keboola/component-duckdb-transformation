@@ -8,7 +8,7 @@
           {
             "name": "Sliced",
             "script": [
-              "-- Export sliced as one table\nCREATE VIEW 'out-table.csv' AS (\n SELECT * FROM sliced \n);"
+              "-- Export sliced as one table\nCREATE VIEW 'out-table.csv' AS (\n SELECT * FROM sliced \n) ORDER BY id;"
             ]
           },
           {
@@ -26,7 +26,7 @@
           {
             "name": "Join",
             "script": [
-              "CREATE VIEW 'joined.csv' AS (\nSELECT * \nFROM sliced \nLEFT JOIN days USING (id));"
+              "CREATE VIEW 'joined.csv' AS (\nSELECT * \nFROM sliced \nLEFT JOIN days USING (id)) ORDER BY id;"
             ]
           }
         ]
