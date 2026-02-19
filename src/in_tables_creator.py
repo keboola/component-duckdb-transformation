@@ -35,6 +35,7 @@ class LocalTableCreator:
         path = self._get_local_file_path(in_table)
         # Create table
         ext = os.path.splitext(path)[1].lower()
+        in_table.has_header()
         if ext in (".parquet", ".parq"):
             return self._create_table_from_parquet(in_table, path)
         else:
@@ -91,16 +92,15 @@ class LocalTableCreator:
         self.logger.debug("Processing Parquet with type casting")
         safe_path = path.replace("'", "''")
         rel = self.connection.sql(f"FROM read_parquet('{safe_path}')")
-        # Use table name without parquet extension to avoid schema parsing (e.g., 'pq.parquet' -> 'pq')
-        table_name = in_table.name.removesuffix(".parquet").removesuffix(".parq")
+        table_name = in_table.name
         columns = []
         for col in rel.columns:
             if col in to_cast:
                 columns.append(duckdb.ColumnExpression(col).cast(duckdb.sqltype("BIGINT")).alias(col))
             else:
                 columns.append(duckdb.ColumnExpression(col))
-        self.connection.execute(f'DROP TABLE IF EXISTS "{table_name}"')
-        rel.select(*columns).to_table(table_name)
+        self.connection.execute(f"DROP TABLE IF EXISTS '{table_name}'")
+        rel.select(*columns).to_table(f"'{table_name}'")
         return CreatedTable(
             name=table_name,
             is_view=False,
@@ -109,7 +109,7 @@ class LocalTableCreator:
     def _create_parquet_table_without_casting(self, in_table: TableDefinition, path) -> CreatedTable:
         """Create Parquet table without type casting."""
         self.logger.debug("Processing Parquet without type casting")
-        table_name = in_table.destination_table_name.removesuffix(".parquet").removesuffix(".parq")
+        table_name = in_table.name
         safe_path = path.replace("'", "''")
         self.connection.execute(
             f"""
@@ -125,8 +125,7 @@ class LocalTableCreator:
     def _create_view_from_csv(self, in_table: TableDefinition, path: str, dtype: dict) -> CreatedTable:
         """Create table from local file with error handling."""
         try:
-            # Table name should already be clean (without .csv) from get_input_tables_definitions
-            table_name = in_table.destination.removesuffix(".csv")
+            table_name = in_table.name
             quote_char = in_table.enclosure or '"'
             self.logger.debug(
                 f"Reading CSV file with parameters: delimiter='{in_table.delimiter or ','}',"
@@ -139,7 +138,7 @@ class LocalTableCreator:
                 header=self._has_header_in_file(in_table),
                 names=self._get_column_names(in_table),
                 dtype=dtype,
-            ).to_view(table_name, replace=True)
+            ).to_view(f"'{table_name}'", replace=True)
             return CreatedTable(
                 name=table_name,
                 is_view=True,

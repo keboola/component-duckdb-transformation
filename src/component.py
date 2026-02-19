@@ -127,46 +127,19 @@ class Component(ComponentBase):
         action = ExpectedInputTablesAction()
 
         # Try to get available input tables - if they exist, do validation
-        available_tables = self._get_input_tables_definitions()
+        available_tables = self.get_input_tables_definitions()
         if available_tables:
             # Do validation with detailed report
             return action.expected_input_tables(blocks=self.params.blocks, available_tables=available_tables)
         else:
             # Fall back to simple comma-separated list
+            self.get_input_tables_definitions()
             return action.expected_input_tables(self.params.blocks)
-
-    def _get_input_tables_definitions(self):
-        """
-        Override parent method to add destination_table_name attribute from configuration.
-
-        Returns:
-            List of TableDefinition objects with added destination_table_name attribute and updated names
-        """
-        base_definitions = self.get_input_tables_definitions()
-
-        for table_def in base_definitions:
-            # Find mapping from source to destination names from config
-            destination_table_name = None
-            for table in self.configuration.tables_input_mapping:
-                if table_def.id:
-                    if table.source == table_def.id:
-                        destination_table_name = table.destination
-                        break
-
-            # Fallback: use original name without .csv
-            if not destination_table_name:
-                destination_table_name = table_def.name
-
-            # Add attribute and update name
-            table_def.destination = destination_table_name
-
-        return base_definitions
 
     def _create_input_tables(self):
         """Create input tables from detected sources."""
         start_time = time.time()
-
-        for in_table in self._get_input_tables_definitions():
+        for in_table in self.get_input_tables_definitions():
             creator = LocalTableCreator(self._connection, self.params.dtypes_infer)
             result = creator.create_table(in_table)
             logging.info(f"Input table created: {result.name} (is_view={result.is_view})")
