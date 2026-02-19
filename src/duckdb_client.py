@@ -26,7 +26,9 @@ def init_connection(threads, max_memory, db_path) -> DuckDBPyConnection:
     }
 
     logging.info(f"Initializing DuckDB connection with config: {config}")
-    conn = duckdb.connect(database=db_path, config=config)
+    # conn = duckdb.connect(database=db_path, config=config)
+    conn = duckdb.connect(config=config)
+
     return conn
 
 

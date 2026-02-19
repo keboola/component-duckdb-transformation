@@ -165,8 +165,8 @@ class Component(ComponentBase):
                     has_header=True,
                 )
                 # Export table to CSV
-                self._connection.execute(f'''COPY "{table.source}" TO "{out_table.full_path}"
-                                            (HEADER, DELIMITER ',', FORCE_QUOTE *)''')
+                self._connection.execute(f"""COPY '{table.source}' TO '{out_table.full_path}'
+                                            (HEADER, DELIMITER ',', FORCE_QUOTE *)""")
                 # Write manifest
                 self.write_manifest(out_table)
             except Exception as e:

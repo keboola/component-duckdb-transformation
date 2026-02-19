@@ -34,7 +34,6 @@ class LocalTableCreator:
         path = self._get_local_file_path(in_table)
         # Create table
         ext = os.path.splitext(path)[1].lower()
-        in_table.has_header()
         if ext in (".parquet", ".parq"):
             return self._create_table_from_parquet(in_table, path)
         else:
@@ -92,14 +91,16 @@ class LocalTableCreator:
         safe_path = path.replace("'", "''")
         rel = self.connection.sql(f"FROM read_parquet('{safe_path}')")
         table_name = in_table.name
-        columns = []
+        cast_exprs = []
         for col in rel.columns:
             if col in to_cast:
-                columns.append(duckdb.ColumnExpression(col).cast(duckdb.sqltype("BIGINT")).alias(col))
+                cast_exprs.append(f'CAST("{col}" AS BIGINT) AS "{col}"')
             else:
-                columns.append(duckdb.ColumnExpression(col))
-        self.connection.execute(f"DROP TABLE IF EXISTS '{table_name}'")
-        rel.select(*columns).to_table(f"'{table_name}'")
+                cast_exprs.append(f'"{col}"')
+        select_clause = ", ".join(cast_exprs)
+        self.connection.execute(
+            f"CREATE OR REPLACE TABLE '{table_name}' AS SELECT {select_clause} FROM read_parquet('{safe_path}')"
+        )
         return CreatedTable(
             name=table_name,
             is_view=False,
@@ -137,7 +138,7 @@ class LocalTableCreator:
                 header=self._has_header_in_file(in_table),
                 names=in_table.column_names or None,
                 dtype=dtype,
-            ).to_view(f"'{table_name}'", replace=True)
+            ).to_view(table_name, replace=True)
             return CreatedTable(
                 name=table_name,
                 is_view=True,
