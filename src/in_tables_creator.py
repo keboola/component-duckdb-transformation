@@ -95,8 +95,7 @@ class LocalTableCreator:
     def _create_parquet_table_with_casting(self, table_name: str, path, to_cast: list[str]) -> CreatedTable:
         """Create Parquet table with type casting for INTEGER columns."""
         self.logger.debug("Processing Parquet with type casting")
-        safe_path = path.replace("'", "''")
-        rel = self.connection.sql(f"FROM read_parquet('{safe_path}')")
+        rel = self.connection.sql(f"FROM read_parquet('{path}')")
         cast_exprs = []
         for col in rel.columns:
             if col in to_cast:
@@ -105,27 +104,15 @@ class LocalTableCreator:
                 cast_exprs.append(f'"{col}"')
         select_clause = ", ".join(cast_exprs)
         self.connection.execute(
-            f"CREATE OR REPLACE TABLE '{table_name}' AS SELECT {select_clause} FROM read_parquet('{safe_path}')"
+            f"CREATE OR REPLACE TABLE '{table_name}' AS SELECT {select_clause} FROM read_parquet('{path}')"
         )
-        return CreatedTable(
-            name=table_name,
-            is_view=False,
-        )
+        return CreatedTable(name=table_name, is_view=False)
 
     def _create_parquet_table_without_casting(self, table_name: str, path) -> CreatedTable:
         """Create Parquet table without type casting."""
         self.logger.debug("Processing Parquet without type casting")
-        safe_path = path.replace("'", "''")
-        self.connection.execute(
-            f"""
-                CREATE OR REPLACE TABLE '{table_name}' AS
-                FROM read_parquet('{safe_path}')
-            """
-        )
-        return CreatedTable(
-            name=table_name,
-            is_view=False,
-        )
+        self.connection.execute(f"CREATE OR REPLACE TABLE '{table_name}' AS FROM read_parquet('{path}')")
+        return CreatedTable(name=table_name, is_view=False)
 
     def _create_view_from_csv(self, table_name: str, in_table: TableDefinition, path: str, dtype: dict) -> CreatedTable:
         """Create view from CSV file with error handling."""
@@ -143,13 +130,12 @@ class LocalTableCreator:
                 names=in_table.column_names or None,
                 dtype=dtype,
             ).to_view(table_name, replace=True)
-            return CreatedTable(
-                name=table_name,
-                is_view=True,
-            )
+            return CreatedTable(name=table_name, is_view=True)
+
         except duckdb.IOException as e:
             self.logger.error(f"DuckDB IO error importing table {table_name}: {e}")
             raise UserException(f"Error importing table {table_name}: {e}")
+
         except Exception as e:
             self.logger.error(f"Unexpected error importing table {table_name}: {e}")
             raise UserException(f"Unexpected error importing table {table_name}: {e}")

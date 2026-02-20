@@ -158,7 +158,7 @@ class Component(ComponentBase):
         for table in self.configuration.tables_output_mapping:
             try:
                 # Get table schema
-                table_meta = self._connection.execute(f"""DESCRIBE TABLE '{table.source}';""").fetchall()
+                table_meta = self._connection.execute(f"DESCRIBE TABLE '{table.source}';").fetchall()
                 schema = {
                     c[0]: ColumnDefinition(data_types=BaseType(dtype=self.convert_base_types(c[1]))) for c in table_meta
                 }
@@ -172,8 +172,9 @@ class Component(ComponentBase):
                     has_header=True,
                 )
                 # Export table to CSV
-                self._connection.execute(f"""COPY '{table.source}' TO '{out_table.full_path}'
-                                            (HEADER, DELIMITER ',', FORCE_QUOTE *)""")
+                self._connection.execute(
+                    f"COPY '{table.source}' TO '{out_table.full_path}' (HEADER, DELIMITER ',', FORCE_QUOTE *)"
+                )
                 # Write manifest
                 self.write_manifest(out_table)
             except Exception as e:
