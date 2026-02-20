@@ -204,7 +204,7 @@
             "tables": [
                 {
                     "source": "out.c-MotherDuck_performance_test.complex_test_data_10",
-                    "destination": "complex_test_data_10.csv",
+                    "destination": "complex_test_data_10",
                     "where_column": "",
                     "where_values": [],
                     "where_operator": "eq",
