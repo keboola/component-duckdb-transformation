@@ -141,12 +141,14 @@ class Component(ComponentBase):
         start_time = time.time()
         # Map storage table ID -> desired DuckDB table name from input mapping
         source_to_destination = {m.source: m.destination for m in self.configuration.tables_input_mapping}
+        source_to_file_type = {m.source: m.file_type for m in self.configuration.tables_input_mapping}
         creator = LocalTableCreator(self._connection, self.params.dtypes_infer)
         for in_table in self.get_input_tables_definitions():
             # Input mapping destination overrides the table definition name.
             # For input tables, the storage ID is in in_table.id (not in_table.destination).
             table_name = source_to_destination.get(in_table.id) or in_table.name
-            result = creator.create_table(in_table, table_name=table_name)
+            file_type = source_to_file_type.get(in_table.id, "csv")
+            result = creator.create_table(in_table, table_name=table_name, file_type=file_type)
             logging.info(f"Input table created: {result.name} (is_view={result.is_view})")
         logging.debug(f"Input tables created in {time.time() - start_time:.2f} seconds")
         if self.params.debug:

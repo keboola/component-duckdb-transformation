@@ -1,7 +1,6 @@
 """Local file table creator."""
 
 import logging
-import os
 from dataclasses import dataclass
 
 import duckdb
@@ -25,21 +24,21 @@ class LocalTableCreator:
         self.logger = logging.getLogger(self.__class__.__name__)
         self.dtypes_infer = dtypes_infer
 
-    def create_table(self, in_table: TableDefinition, table_name: str) -> CreatedTable:
+    def create_table(self, in_table: TableDefinition, table_name: str, file_type: str = "csv") -> CreatedTable:
         """Create table from local file.
 
         Args:
             in_table: Table definition with file path and metadata.
             table_name: Name for the DuckDB table/view (from input mapping destination).
+            file_type: File type from input mapping ("csv" or "parquet").
         """
         self.logger.debug(f"Processing local file for table: {table_name}")
         # Get data types
         dtype = self._get_data_types(in_table)
         # Get local file path
-        path = self._get_local_file_path(in_table)
-        # Create table
-        ext = os.path.splitext(path)[1].lower()
-        if ext in (".parquet", ".parq"):
+        path = self._get_local_file_path(in_table, file_type)
+        # Create table based on file_type from input mapping
+        if file_type == "parquet":
             return self._create_table_from_parquet(table_name, in_table, path)
         else:
             try:
@@ -47,9 +46,12 @@ class LocalTableCreator:
             except duckdb.IOException as e:
                 raise UserException(f"Unsupported file type for table {table_name}, error: {e}")
 
-    def _get_local_file_path(self, in_table: TableDefinition) -> str:
+    def _get_local_file_path(self, in_table: TableDefinition, file_type: str = "csv") -> str:
         """Get the appropriate file path for local file processing."""
-        if in_table.is_sliced:
+        if file_type == "parquet":
+            path = f"{in_table.full_path}/*.parquet"
+            self.logger.debug(f"Using hive-partitioned parquet path pattern: {path}")
+        elif in_table.is_sliced:
             path = f"{in_table.full_path}/*.csv"
             self.logger.debug(f"Using sliced path pattern: {path}")
         else:
