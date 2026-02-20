@@ -151,11 +151,6 @@ class Component(ComponentBase):
             result = creator.create_table(in_table, table_name=table_name, file_type=file_type)
             logging.info(f"Input table created: {result.name} (is_view={result.is_view})")
         logging.debug(f"Input tables created in {time.time() - start_time:.2f} seconds")
-        if self.params.debug:
-            tables = self._connection.execute(
-                "SELECT table_name, table_type FROM information_schema.tables WHERE table_schema = 'main'"
-            ).fetchall()
-            logging.info(f"DuckDB tables after input creation: {tables}")
 
     def _export_tables(self):
         """Export tables to KBC output with timing."""
