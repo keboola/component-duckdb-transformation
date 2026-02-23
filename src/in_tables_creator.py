@@ -1,8 +1,6 @@
 """Local file table creator."""
 
 import logging
-import os
-from csv import DictReader
 from dataclasses import dataclass
 
 import duckdb
@@ -26,26 +24,34 @@ class LocalTableCreator:
         self.logger = logging.getLogger(self.__class__.__name__)
         self.dtypes_infer = dtypes_infer
 
-    def create_table(self, in_table: TableDefinition) -> CreatedTable:
-        """Create table from local file."""
-        self.logger.debug(f"Processing local file for table: {in_table.name}")
+    def create_table(self, in_table: TableDefinition, table_name: str, file_type: str = "csv") -> CreatedTable:
+        """Create table from local file.
+
+        Args:
+            in_table: Table definition with file path and metadata.
+            table_name: Name for the DuckDB table/view (from input mapping destination).
+            file_type: File type from input mapping ("csv" or "parquet").
+        """
+        self.logger.debug(f"Processing local file for table: {table_name}")
         # Get data types
         dtype = self._get_data_types(in_table)
         # Get local file path
-        path = self._get_local_file_path(in_table)
-        # Create table
-        ext = os.path.splitext(path)[1].lower()
-        if ext in (".parquet", ".parq"):
-            return self._create_table_from_parquet(in_table, path)
+        path = self._get_local_file_path(in_table, file_type)
+        # Create table based on file_type from input mapping
+        if file_type == "parquet":
+            return self._create_table_from_parquet(table_name, in_table, path)
         else:
             try:
-                return self._create_view_from_csv(in_table, path, dtype)
+                return self._create_view_from_csv(table_name, in_table, path, dtype)
             except duckdb.IOException as e:
-                raise UserException(f"Unsupported file type for table {in_table.name}, error: {e}")
+                raise UserException(f"Unsupported file type for table {table_name}, error: {e}")
 
-    def _get_local_file_path(self, in_table: TableDefinition) -> str:
+    def _get_local_file_path(self, in_table: TableDefinition, file_type: str = "csv") -> str:
         """Get the appropriate file path for local file processing."""
-        if in_table.is_sliced:
+        if file_type == "parquet":
+            path = f"{in_table.full_path}/*.parquet"
+            self.logger.debug(f"Using hive-partitioned parquet path pattern: {path}")
+        elif in_table.is_sliced:
             path = f"{in_table.full_path}/*.csv"
             self.logger.debug(f"Using sliced path pattern: {path}")
         else:
@@ -63,15 +69,15 @@ class LocalTableCreator:
             self.logger.debug("Using automatic dtype inference")
         return dtype
 
-    def _create_table_from_parquet(self, in_table: TableDefinition, path) -> CreatedTable:
-        """Create table from Parquet files in S3 with optional type casting."""
-        self.logger.debug(f"Creating table from Parquet files: {in_table.name}")
+    def _create_table_from_parquet(self, table_name: str, in_table: TableDefinition, path) -> CreatedTable:
+        """Create table from Parquet files with optional type casting."""
+        self.logger.debug(f"Creating table from Parquet files: {table_name}")
         # Check if type casting is needed for Snowflake INTEGER columns
         to_cast = self._get_columns_to_cast(in_table)
         if to_cast:
-            return self._create_parquet_table_with_casting(in_table, path, to_cast)
+            return self._create_parquet_table_with_casting(table_name, path, to_cast)
         else:
-            return self._create_parquet_table_without_casting(in_table, path)
+            return self._create_parquet_table_without_casting(table_name, path)
 
     def _get_columns_to_cast(self, in_table: TableDefinition) -> list[str]:
         """Get list of columns that need to be cast to BIGINT."""
@@ -86,91 +92,50 @@ class LocalTableCreator:
         self.logger.debug(f"Columns to cast to BIGINT: {to_cast}")
         return to_cast
 
-    def _create_parquet_table_with_casting(self, in_table: TableDefinition, path, to_cast: list[str]) -> CreatedTable:
+    def _create_parquet_table_with_casting(self, table_name: str, path, to_cast: list[str]) -> CreatedTable:
         """Create Parquet table with type casting for INTEGER columns."""
         self.logger.debug("Processing Parquet with type casting")
-        safe_path = path.replace("'", "''")
-        rel = self.connection.sql(f"FROM read_parquet('{safe_path}')")
-        # Use table name without parquet extension to avoid schema parsing (e.g., 'pq.parquet' -> 'pq')
-        table_name = in_table.name.removesuffix(".parquet").removesuffix(".parq")
-        columns = []
+        rel = self.connection.sql(f"FROM read_parquet('{path}')")
+        cast_exprs = []
         for col in rel.columns:
             if col in to_cast:
-                columns.append(duckdb.ColumnExpression(col).cast(duckdb.sqltype("BIGINT")).alias(col))
+                cast_exprs.append(f'CAST("{col}" AS BIGINT) AS "{col}"')
             else:
-                columns.append(duckdb.ColumnExpression(col))
-        self.connection.execute(f'DROP TABLE IF EXISTS "{table_name}"')
-        rel.select(*columns).to_table(table_name)
-        return CreatedTable(
-            name=table_name,
-            is_view=False,
+                cast_exprs.append(f'"{col}"')
+        select_clause = ", ".join(cast_exprs)
+        self.connection.execute(
+            f"CREATE OR REPLACE TABLE '{table_name}' AS SELECT {select_clause} FROM read_parquet('{path}')"
         )
+        return CreatedTable(name=table_name, is_view=False)
 
-    def _create_parquet_table_without_casting(self, in_table: TableDefinition, path) -> CreatedTable:
+    def _create_parquet_table_without_casting(self, table_name: str, path) -> CreatedTable:
         """Create Parquet table without type casting."""
         self.logger.debug("Processing Parquet without type casting")
-        table_name = in_table.destination_table_name.removesuffix(".parquet").removesuffix(".parq")
-        safe_path = path.replace("'", "''")
-        self.connection.execute(
-            f"""
-                CREATE OR REPLACE TABLE '{table_name}' AS
-                FROM read_parquet('{safe_path}')
-            """
-        )
-        return CreatedTable(
-            name=table_name,
-            is_view=False,
-        )
+        self.connection.execute(f"CREATE OR REPLACE TABLE '{table_name}' AS FROM read_parquet('{path}')")
+        return CreatedTable(name=table_name, is_view=False)
 
-    def _create_view_from_csv(self, in_table: TableDefinition, path: str, dtype: dict) -> CreatedTable:
-        """Create table from local file with error handling."""
+    def _create_view_from_csv(self, table_name: str, in_table: TableDefinition, path: str, dtype: dict) -> CreatedTable:
+        """Create view from CSV file with error handling."""
         try:
-            # Table name should already be clean (without .csv) from get_input_tables_definitions
-            table_name = in_table.destination.removesuffix(".csv")
             quote_char = in_table.enclosure or '"'
             self.logger.debug(
                 f"Reading CSV file with parameters: delimiter='{in_table.delimiter or ','}',"
-                f" quotechar='{quote_char}', header={self._has_header_in_file(in_table)}"
+                f" quotechar='{quote_char}', header={in_table.has_header}"
             )
             self.connection.read_csv(
                 path_or_buffer=path,
                 delimiter=in_table.delimiter or ",",
                 quotechar=in_table.enclosure or '"',
-                header=self._has_header_in_file(in_table),
-                names=self._get_column_names(in_table),
+                header=in_table.has_header,
+                names=in_table.column_names or None,
                 dtype=dtype,
             ).to_view(table_name, replace=True)
-            return CreatedTable(
-                name=table_name,
-                is_view=True,
-            )
+            return CreatedTable(name=table_name, is_view=True)
+
         except duckdb.IOException as e:
-            self.logger.error(f"DuckDB IO error importing table {in_table.name}: {e}")
-            raise UserException(f"Error importing table {in_table.name}: {e}")
+            self.logger.error(f"DuckDB IO error importing table {table_name}: {e}")
+            raise UserException(f"Error importing table {table_name}: {e}")
+
         except Exception as e:
-            self.logger.error(f"Unexpected error importing table {in_table.name}: {e}")
-            raise UserException(f"Unexpected error importing table {in_table.name}: {e}")
-
-    @staticmethod
-    def _has_header_in_file(t: TableDefinition) -> bool:
-        """Determine if file has header."""
-        is_input_mapping_manifest = t.stage == "in"
-        if t.is_sliced:
-            has_header = False
-        elif t.column_names and not is_input_mapping_manifest:
-            has_header = False
-        else:
-            has_header = True
-        return has_header
-
-    @staticmethod
-    def _get_column_names(t: TableDefinition) -> list[str]:
-        """Get table header from the file or from the manifest."""
-        header = None
-        if t.is_sliced or t.column_names:
-            header = t.column_names
-        else:
-            with open(t.full_path, encoding="utf-8") as f:
-                reader = DictReader(f, lineterminator="\n", delimiter=t.delimiter, quotechar=t.enclosure)
-                header = reader.fieldnames
-        return header
+            self.logger.error(f"Unexpected error importing table {table_name}: {e}")
+            raise UserException(f"Unexpected error importing table {table_name}: {e}")

@@ -340,8 +340,13 @@ class BlockOrchestrator:
         """Execute single query and return execution time."""
         thread_id = threading.current_thread().ident
         start = time.time()
-        # DuckDB supports thread-safe access to a single connection
-        self.connection.execute(query.sql)
+        # Each thread must use its own cursor for proper isolation and exception propagation.
+        # Using connection.execute() directly shares an internal cursor which is not thread-safe.
+        cursor = self.connection.cursor()
+        try:
+            cursor.execute(query.sql)
+        finally:
+            cursor.close()
         duration = time.time() - start
         sql_preview = BlockOrchestrator._get_sql_preview(query.sql)
         logging.info(f"Query '{query.name}' completed in {duration:.2f}s [Thread {thread_id}] - SQL: {sql_preview}")
@@ -383,9 +388,11 @@ class BlockOrchestrator:
                     if len(completed_futures) < len(future_to_query):
                         self._cancel_remaining_futures(future_to_query, completed_futures)
                     successful_count = len(query_times)
+                    separator = "\n  - "
                     raise UserException(
                         f"Query execution failed after {successful_count} successful "
-                        f"quer{'y' if successful_count == 1 else 'ies'}:\n  - {'\n  - '.join(failed_queries)}"
+                        f"quer{'y' if successful_count == 1 else 'ies'}:"
+                        f"{separator}{separator.join(failed_queries)}"
                     )
 
                 return query_times

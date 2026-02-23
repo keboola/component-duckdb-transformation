@@ -13,7 +13,7 @@ env:
   KBC_DEVELOPERPORTAL_PASSWORD: ${{ secrets.KBC_DEVELOPERPORTAL_PASSWORD }}
 
   # (Optional) Test KBC project: https://connection.keboola.com/admin/projects/0000
-  KBC_TEST_PROJECT_CONFIGS: "01kh8s6azaeyr2wmy6xvpm1g0h" # space separated list of config ids
+  KBC_TEST_PROJECT_CONFIGS: "01kh8s6azaeyr2wmy6xvpm1g0h 01khx11tjtns4mfchqk3tff389" # space separated list of config ids
   KBC_STORAGE_TOKEN: ${{ secrets.KBC_STORAGE_TOKEN }} # required for running KBC tests
   KBC_HOST: "connection.us-east4.gcp.keboola.com" # Keboola host
 

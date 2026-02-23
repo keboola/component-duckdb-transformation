@@ -1,4 +1,5 @@
 {
+  "id": "in.c-sliced",
   "incremental": false,
   "write_always": false,
   "delimiter": ",",

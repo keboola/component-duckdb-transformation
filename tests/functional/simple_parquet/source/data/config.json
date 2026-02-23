@@ -26,13 +26,14 @@
     "input": {
       "tables": [
         {
-          "source": "in.c-pq",
+          "source": "in.c-pq.parquet",
           "destination": "pq",
           "where_column": "",
           "where_values": [],
           "where_operator": "eq",
           "columns": [],
-          "keep_internal_timestamp_column": false
+          "keep_internal_timestamp_column": false,
+          "file_type": "parquet"
         }
       ]
     }

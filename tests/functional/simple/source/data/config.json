@@ -8,14 +8,14 @@
           {
             "name": "Sliced",
             "script": [
-              "-- Export sliced as one table\nCREATE VIEW 'out-table.csv' AS (\n SELECT * FROM sliced \n);"
+              "-- Export sliced as one table\nCREATE VIEW 'out-table.csv' AS (\n SELECT * FROM sliced \n) ORDER BY id;"
             ]
           },
           {
             "name": "Days",
             "script": [
-              "CREATE VIEW 'week.csv' AS (\nSELECT *\nFROM days\nWHERE id::INT <= 5);",
-              "CREATE VIEW 'weekend.csv' AS (\nSELECT *\nFROM days\nWHERE id::INT > 5);"
+              "CREATE VIEW 'week.csv' AS (\nSELECT *\nFROM 'days.csv'\nWHERE id::INT <= 5);",
+              "CREATE VIEW 'weekend.csv' AS (\nSELECT *\nFROM 'days.csv'\nWHERE id::INT > 5);"
             ]
           }
         ]
@@ -26,7 +26,7 @@
           {
             "name": "Join",
             "script": [
-              "CREATE VIEW 'joined.csv' AS (\nSELECT * \nFROM sliced \nLEFT JOIN days USING (id));"
+              "CREATE VIEW 'joined.csv' AS (\nSELECT * \nFROM sliced \nLEFT JOIN 'days.csv' USING (id)) ORDER BY id;"
             ]
           }
         ]
@@ -58,7 +58,7 @@
       "tables": [
         {
           "source": "in.c-days.csv",
-          "destination": "days",
+          "destination": "days.csv",
           "where_column": "",
           "where_values": [],
           "where_operator": "eq",
