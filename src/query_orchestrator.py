@@ -126,8 +126,10 @@ def _create_parallel_batches_for_block(block_queries: list[Query], producers: di
                 if output in table_creators:
                     creator = table_creators[output]
                     # Add dependency: CREATE must run before INSERT for the same table
-                    local_graph[creator.name].append(query.name)
-                    local_in_degree[query.name] += 1
+                    # Skip if CREATE and INSERT are in the same query (single script)
+                    if creator.name != query.name:
+                        local_graph[creator.name].append(query.name)
+                        local_in_degree[query.name] += 1
 
         for dep in query.dependencies:
             # Check if dependency is produced by another query in this block
