@@ -6,11 +6,11 @@ readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "black>=25.1.0",
-    "datadirtest",
-    "duckdb>=1.4.4",
+    "duckdb>=1.5.0",
     "flake8>=7.3.0",
     "freezegun>=1.5.2",
     "keboola-component>=1.8.3",
+    "keboola-datadirtest>=2.0.2",
     "keboola-http-client>=1.0.1",
     "keboola-utils>=1.1.0",
     "mock>=5.2.0",
@@ -18,9 +18,6 @@ dependencies = [
     "ruff>=0.12.7",
     "sqlglot>=25.0.0",
 ]
-
-[tool.uv.sources]
-datadirtest = { git = "https://github.com/keboola/datadirtest" }
 
 [tool.ruff]
 exclude = [
