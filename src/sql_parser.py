@@ -54,9 +54,9 @@ class SQLParser:
                     if statement.this:
                         # For CREATE TABLE, statement.this is a Schema object
                         if hasattr(statement.this, "this") and statement.this.this:
-                            outputs.add(str(statement.this.this))
+                            outputs.add(statement.this.this.name)
                         elif hasattr(statement.this, "name") and statement.this.name:
-                            outputs.add(str(statement.this.name))
+                            outputs.add(statement.this.name)
 
                 # Find INSERT statements (output only)
                 # Note: INSERT table dependencies are handled explicitly in orchestrator
@@ -88,9 +88,9 @@ class SQLParser:
                     if statement.this:
                         # For CREATE TABLE, statement.this is a Schema object
                         if hasattr(statement.this, "this") and statement.this.this:
-                            create_outputs.add(str(statement.this.this))
+                            create_outputs.add(statement.this.this.name)
                         elif hasattr(statement.this, "name") and statement.this.name:
-                            create_outputs.add(str(statement.this.name))
+                            create_outputs.add(statement.this.name)
             dependencies = dependencies - create_outputs
 
             return dependencies, outputs

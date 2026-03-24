@@ -1,0 +1,53 @@
+{
+  "runtime": {
+    "image_tag": "query-parallelization"
+  },
+  "parameters": {
+    "blocks": [
+      {
+        "name": "Block 1",
+        "codes": [
+          {
+            "name": "Code 1",
+            "script": [
+              "create table \"t1\"\nas select 1;",
+              "create view \"t2\"\nas select * from \"t1\";",
+              "create table t3\nas select * from \"t2\";",
+              "create table \"t4-new\"\nas select * from t1;",
+              "create table \"t5\"\nas select * from \"t4-new\";"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "storage": {
+    "input": {
+      "tables": []
+    },
+    "output": {
+      "tables": [
+        {
+          "destination": "out.t1",
+          "source": "t1"
+        },
+        {
+          "destination": "out.t2",
+          "source": "t2"
+        },
+        {
+          "destination": "out.t3",
+          "source": "t3"
+        },
+        {
+          "destination": "out.t4-new",
+          "source": "t4-new"
+        },
+        {
+          "destination": "out.t5",
+          "source": "t5"
+        }
+      ]
+    }
+  }
+}
