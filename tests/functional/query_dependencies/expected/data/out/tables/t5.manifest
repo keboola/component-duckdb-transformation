@@ -1,0 +1,1 @@
+{"destination": "out.t5", "incremental": false, "write_always": false, "delimiter": ",", "enclosure": "\"", "manifest_type": "out", "has_header": true, "schema": [{"name": "1", "data_type": {"base": {"type": "INTEGER"}}, "nullable": true}]}
