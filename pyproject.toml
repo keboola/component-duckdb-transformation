@@ -6,7 +6,7 @@ readme = "README.md"
 requires-python = "~=3.13.0"
 dependencies = [
     "black>=25.1.0",
-    "duckdb==1.4.4",
+    "duckdb==1.5.1",
     "flake8>=7.3.0",
     "freezegun>=1.5.2",
     "keboola-component>=1.8.3",
@@ -20,6 +20,7 @@ dependencies = [
 ]
 
 [tool.ruff]
+line-length = 120
 exclude = [
     ".git",
     "__pycache__",
@@ -27,8 +28,9 @@ exclude = [
     "example",
     "venv",
 ]
+
+[tool.ruff.lint]
 ignore = []
-line-length = 120
 select = [
     "E",
     "F",

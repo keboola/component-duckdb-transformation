@@ -1,5 +1,5 @@
 import logging
-from typing import Optional
+from typing import Literal, Optional
 from keboola.component.exceptions import UserException
 from pydantic import BaseModel, Field, ValidationError
 from system_resources import detect_cpu_count, get_optimal_memory_mb
@@ -26,6 +26,7 @@ class Configuration(BaseModel):
     dtypes_infer: bool = False
     debug: bool = False
     syntax_check_on_startup: bool = Field(default=False)
+    duckdb_version: Literal["1.5.1", "1.4.4"] = "1.5.1"
 
     def __init__(self, /, **data):
         try:

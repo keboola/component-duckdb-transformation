@@ -1,5 +1,6 @@
 #!/bin/sh
 set -e
 
-flake8 --config=flake8.cfg
-python -m unittest discover
+PYTHON=/opt/venvs/duckdb-1.5.1/bin/python
+$PYTHON -m flake8 --config=flake8.cfg
+$PYTHON -m unittest discover

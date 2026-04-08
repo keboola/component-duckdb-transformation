@@ -1,0 +1,32 @@
+{
+  "parameters": {
+    "debug": "true",
+    "blocks": [
+      {
+        "name": "Block 1",
+        "codes": [
+          {
+            "name": "Join",
+            "script": [
+              "CREATE VIEW 'version' AS (SELECT version() AS version);"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "storage": {
+    "output": {
+      "tables": [
+        {
+          "destination": "out.c-out.version",
+          "source": "version"
+        }
+      ]
+    },
+    "input": {
+      "tables": [
+      ]
+    }
+  }
+}

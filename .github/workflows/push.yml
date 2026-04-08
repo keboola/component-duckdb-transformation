@@ -122,9 +122,9 @@ jobs:
         run: |
           docker load --input /tmp/${{ env.KBC_DEVELOPERPORTAL_APP }}.tar
           docker image ls -a
-          docker run ${{ env.KBC_DEVELOPERPORTAL_APP }}:latest flake8 . --config=flake8.cfg
+          docker run ${{ env.KBC_DEVELOPERPORTAL_APP }}:latest /opt/venvs/duckdb-1.5.1/bin/python -m flake8 --config=flake8.cfg
           echo "Running unittest discovery..."
-          docker run ${{ env.KBC_DEVELOPERPORTAL_APP }}:latest sh -lc 'python -m unittest discover'
+          docker run ${{ env.KBC_DEVELOPERPORTAL_APP }}:latest sh -lc '/opt/venvs/duckdb-1.5.1/bin/python -m unittest discover'
 
   tests-kbc:
     name: Run KBC Tests
