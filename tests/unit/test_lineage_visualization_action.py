@@ -1,14 +1,11 @@
-import unittest
-import os
 import sys
-
-# Ensure src is on sys.path
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../src")))
+import textwrap
+import unittest
 
 from keboola.component.sync_actions import MessageType
+
 from actions.lineage_visualization import LineageVisualizationAction
 from configuration import Block, Code
-import textwrap
 
 
 class TestLineageVisualizationAction(unittest.TestCase):
@@ -106,6 +103,7 @@ class TestLineageVisualizationAction(unittest.TestCase):
             f"{sql3}\n"
             "```\n\n"
         )
+
         # Normalize whitespace to avoid false negatives from indentation/spacing
         def _normalize(s: str) -> str:
             return "\n".join(line.rstrip() for line in s.strip().splitlines())

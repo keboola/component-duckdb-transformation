@@ -1,7 +1,6 @@
 """SQL validation module."""
 
 import logging
-from typing import Dict, List
 
 import sqlglot
 from keboola.component.sync_actions import MessageType, ValidationResult
@@ -103,7 +102,7 @@ class SQLValidator:
             return ValidationResult(message=message, type=MessageType.DANGER)
 
     @staticmethod
-    def _check_common_sql_errors(sql: str) -> List[Dict[str, str]]:
+    def _check_common_sql_errors(sql: str) -> list[dict[str, str]]:
         """
         Check for common SQL errors that sqlglot might not catch.
         Args:
@@ -145,7 +144,7 @@ class SQLValidator:
             errors.append({"error": "Warning: Arithmetic operations on VARCHAR columns may cause Binder Errors"})
         return errors
 
-    def extract_table_dependencies(self, sql: str) -> Dict[str, List[str]]:
+    def extract_table_dependencies(self, sql: str) -> dict[str, list[str]]:
         """
         Extract table dependencies from SQL query.
         Args:

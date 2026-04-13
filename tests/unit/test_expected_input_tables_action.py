@@ -1,11 +1,8 @@
-import unittest
-import os
 import sys
-
-# Ensure src is on sys.path
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../src")))
+import unittest
 
 from keboola.component.sync_actions import MessageType
+
 from actions.expected_input_tables import ExpectedInputTablesAction
 from configuration import Block, Code, Configuration
 

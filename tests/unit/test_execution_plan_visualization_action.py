@@ -1,11 +1,8 @@
-import unittest
-import os
 import sys
-
-# Ensure src is on sys.path
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../src")))
+import unittest
 
 from keboola.component.sync_actions import MessageType
+
 from actions.execution_plan_visualization import ExecutionPlanVisualizationAction
 from configuration import Block, Code
 
@@ -67,7 +64,7 @@ class TestExecutionPlanVisualizationAction(unittest.TestCase):
         sys.stderr.write("🚀 Starting test: test_execution_plan_error\n")
         sys.stderr.flush()
         import actions.execution_plan_visualization as mod
-        
+
         original_orchestrator = mod.BlockOrchestrator
 
         def boom(*_, **__):
@@ -82,5 +79,3 @@ class TestExecutionPlanVisualizationAction(unittest.TestCase):
             self.assertIn("Error generating execution plan visualization", res.message)
         finally:
             mod.BlockOrchestrator = original_orchestrator
-
-

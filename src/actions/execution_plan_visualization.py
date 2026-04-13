@@ -3,7 +3,9 @@ Execution plan visualization action for query execution planning.
 """
 
 import logging
-from keboola.component.sync_actions import ValidationResult, MessageType
+
+from keboola.component.sync_actions import MessageType, ValidationResult
+
 from query_orchestrator import BlockOrchestrator
 
 
