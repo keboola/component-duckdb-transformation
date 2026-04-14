@@ -1,8 +1,10 @@
 import logging
-from typing import Literal, Optional
+
 from keboola.component.exceptions import UserException
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field, ValidationError, field_validator
+
 from system_resources import detect_cpu_count, get_optimal_memory_mb
+from versions import LATEST_ALIAS, SUPPORTED_VERSIONS
 
 # Default constants for system resources
 DEFAULT_CPU_COUNT = 4
@@ -21,12 +23,19 @@ class Block(BaseModel):
 
 class Configuration(BaseModel):
     blocks: list[Block] = Field(default_factory=list)
-    threads: Optional[int] = Field(default=None, description="Number of threads (None for auto-detection)")
-    max_memory_mb: Optional[int] = Field(default=None, description="Memory limit in MB (None for auto-detection)")
+    threads: int | None = Field(default=None, description="Number of threads (None for auto-detection)")
+    max_memory_mb: int | None = Field(default=None, description="Memory limit in MB (None for auto-detection)")
     dtypes_infer: bool = False
     debug: bool = False
     syntax_check_on_startup: bool = Field(default=False)
-    duckdb_version: Literal["1.5.1", "1.4.4"] = "1.5.1"
+    duckdb_version: str = LATEST_ALIAS
+
+    @field_validator("duckdb_version")
+    @classmethod
+    def validate_duckdb_version(cls, v: str) -> str:
+        if v != LATEST_ALIAS and v not in SUPPORTED_VERSIONS:
+            raise ValueError(f"duckdb_version must be one of: {sorted(SUPPORTED_VERSIONS | {LATEST_ALIAS})}")
+        return v
 
     def __init__(self, /, **data):
         try:

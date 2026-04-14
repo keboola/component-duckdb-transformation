@@ -5,34 +5,47 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = "~=3.13.0"
 dependencies = [
-    "black>=25.1.0",
-    "duckdb==1.5.1",
-    "flake8>=7.3.0",
     "freezegun>=1.5.2",
     "keboola-component>=1.8.3",
-    "keboola-datadirtest>=2.0.2",
     "keboola-http-client>=1.0.1",
     "keboola-utils>=1.1.0",
-    "mock>=5.2.0",
+    "packaging>=24",
     "pydantic>=2.11.7",
-    "ruff>=0.12.7",
     "sqlglot>=25.0.0",
+]
+
+[dependency-groups]
+dev = [
+    "freezegun>=1.5.2",
+    "keboola-datadirtest>=2.0.2",
+    "mock>=5.2.0",
+    "pre-commit>=4",
+    "pytest>=8",
+    "ruff>=0.12",
+    "ty>=0.0.1a6",
+]
+"duckdb-1.5.1" = ["duckdb==1.5.1"]
+"duckdb-1.4.4" = ["duckdb==1.4.4"]
+
+[tool.uv]
+default-groups = ["dev", "duckdb-1.5.1"]
+conflicts = [
+    [
+        { group = "duckdb-1.5.1" },
+        { group = "duckdb-1.4.4" },
+    ],
 ]
 
 [tool.ruff]
 line-length = 120
-exclude = [
-    ".git",
-    "__pycache__",
-    "tests",
-    "example",
-    "venv",
-]
+exclude = [".git", "__pycache__", ".venvs", "example", "venv"]
 
 [tool.ruff.lint]
-ignore = []
-select = [
-    "E",
-    "F",
-    "W",
-]
+extend-select = ["I", "UP"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+
+[tool.ty.environment]
+extra-paths = ["src"]

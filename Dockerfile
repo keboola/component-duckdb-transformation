@@ -1,19 +1,39 @@
-FROM python:3.13-slim
+FROM python:3.13-slim AS base
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+
+ARG VENV_BASE=/code/.venvs
 WORKDIR /code/
 COPY pyproject.toml uv.lock ./
 
-# Primary venv: all deps + duckdb 1.5.1 (from lockfile)
-RUN uv venv /opt/venvs/duckdb-1.5.1 && \
-    UV_PROJECT_ENVIRONMENT=/opt/venvs/duckdb-1.5.1 uv sync --all-groups --frozen
+# Current version venv — runtime deps + duckdb 1.5.1, no dev tools
+RUN UV_PROJECT_ENVIRONMENT=$VENV_BASE/duckdb-1.5.1 \
+    uv sync --no-group dev --frozen
 
-# Legacy venv: clone primary, swap duckdb to 1.4.4
-RUN cp -a /opt/venvs/duckdb-1.5.1 /opt/venvs/duckdb-1.4.4 && \
-    uv pip install --python /opt/venvs/duckdb-1.4.4/bin/python duckdb==1.4.4
+# LTS venv — runtime deps + duckdb 1.4.4, no dev tools
+RUN UV_PROJECT_ENVIRONMENT=$VENV_BASE/duckdb-1.4.4 \
+    uv sync --group duckdb-1.4.4 --no-group dev --no-group duckdb-1.5.1 --frozen
 
 COPY src/ src/
-COPY tests/ tests/
-COPY flake8.cfg .
 
-# System Python runs the launcher, which execs into the correct venv
+
+# ── test ──────────────────────────────────────────────────────────────────────
+
+FROM base AS test
+
+ARG VENV_BASE=/code/.venvs
+
+# Extend the primary venv with dev tools (pytest, ruff, ty, pre-commit)
+RUN UV_PROJECT_ENVIRONMENT=$VENV_BASE/duckdb-1.5.1 \
+    uv sync --frozen
+
+COPY scripts/ scripts/
+COPY tests/ tests/
+
+CMD ["uv", "run", "python", "-m", "pytest", "tests/", "--tb=short", "-q"]
+
+
+# ── production ────────────────────────────────────────────────────────────────
+
+FROM base AS production
+
 CMD ["python", "-u", "/code/src/launcher.py"]

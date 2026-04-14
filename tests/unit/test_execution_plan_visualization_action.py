@@ -3,6 +3,7 @@ import unittest
 
 from keboola.component.sync_actions import MessageType
 
+import actions.execution_plan_visualization as mod
 from actions.execution_plan_visualization import ExecutionPlanVisualizationAction
 from configuration import Block, Code
 
@@ -63,8 +64,6 @@ class TestExecutionPlanVisualizationAction(unittest.TestCase):
     def test_execution_plan_error(self):
         sys.stderr.write("🚀 Starting test: test_execution_plan_error\n")
         sys.stderr.flush()
-        import actions.execution_plan_visualization as mod
-
         original_orchestrator = mod.BlockOrchestrator
 
         def boom(*_, **__):

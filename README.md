@@ -118,6 +118,67 @@ SQL Syntax and Naming Conventions
 - When referencing tables with mixed case (or any non-alphanumeric characters) always use quotes: `"TaBlE-stage"`
 - Be aware that input table names are typically lowercase unless explicitly quoted
 
+Supported DuckDB Versions
+-------------------------
+
+Each supported DuckDB version gets its own isolated venv built into the Docker image.
+The `latest` UI option always resolves to the most recent version at runtime.
+
+To add a new version, update these five files in order:
+
+**1. `pyproject.toml`** — add a dependency group and extend the conflicts list:
+
+```toml
+[dependency-groups]
+"duckdb-X.Y.Z" = ["duckdb==X.Y.Z"]
+
+[tool.uv]
+conflicts = [
+    [
+        { group = "duckdb-1.5.1" },
+        { group = "duckdb-1.4.4" },
+        { group = "duckdb-X.Y.Z" },
+    ],
+]
+```
+
+**2. `src/versions.py`** — add the version mapping (order does not matter, the highest version is detected automatically):
+
+```python
+VENV_NAMES: dict[str, str] = {
+    "1.5.1": "duckdb-1.5.1",
+    "1.4.4": "duckdb-1.4.4",
+    "X.Y.Z": "duckdb-X.Y.Z",
+}
+```
+
+**3. `Dockerfile`** — add a venv build step in the `base` stage:
+
+```dockerfile
+RUN UV_PROJECT_ENVIRONMENT=$VENV_BASE/duckdb-X.Y.Z \
+    uv sync --group duckdb-X.Y.Z --no-group dev --no-group duckdb-1.5.1 --no-group duckdb-1.4.4 --frozen
+```
+
+**4. `component_config/configSchema.json`** — add the version to the enum:
+
+```json
+"enum": ["latest", "X.Y.Z", "1.5.1", "1.4.4"]
+```
+
+**5. Regenerate the lockfile:**
+
+```sh
+uv lock
+```
+
+The CI `pre-check` job runs before any Docker build and validates that the lockfile
+and `versions.py` are consistent. If any file is out of sync it fails immediately
+with a message pointing to the exact fix needed. To run the check locally:
+
+```sh
+PYTHONPATH=src uv run python scripts/check_versions.py
+```
+
 Development
 -----------
 
