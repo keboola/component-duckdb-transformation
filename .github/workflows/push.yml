@@ -32,4 +32,5 @@ jobs:
       test_build_target: test
       docker_build_target: production
       test_command: uv run python -m pytest tests/ --tb=short -q
+      kbc_test_configs: "01kh8s6azaeyr2wmy6xvpm1g0h 01khx11tjtns4mfchqk3tff389"
     secrets: inherit
