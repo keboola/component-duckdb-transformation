@@ -17,7 +17,7 @@ VENV_BASE = "/code/.venvs"
 # Order does not matter — DEFAULT_VERSION is always derived as the
 # semantically highest version using packaging.Version comparison.
 SUPPORTED_VERSIONS: set[str] = {
-    "1.5.1",
+    "1.5.2",
     "1.4.4",  # LTS
 }
 
