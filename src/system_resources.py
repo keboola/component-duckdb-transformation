@@ -1,15 +1,14 @@
 """System resource detection and DuckDB optimization module."""
 
-import os
 import logging
-from typing import Optional
+import os
 
 # Constants for optimization
 # Reserve a fixed amount of memory for Python runtime and overhead
 PYTHON_RESERVED_MEMORY_MB = 256
 
 
-def detect_cpu_count() -> Optional[int]:
+def detect_cpu_count() -> int | None:
     """Detect CPU count from cgroup."""
     # Try cgroup v1
     cpu_quota_path = "/sys/fs/cgroup/cpu/cpu.cfs_quota_us"
@@ -17,16 +16,16 @@ def detect_cpu_count() -> Optional[int]:
 
     if os.path.exists(cpu_quota_path) and os.path.exists(cpu_period_path):
         try:
-            with open(cpu_quota_path, "r") as f:
+            with open(cpu_quota_path) as f:
                 quota = int(f.read().strip())
-            with open(cpu_period_path, "r") as f:
+            with open(cpu_period_path) as f:
                 period = int(f.read().strip())
 
             if quota > 0:
                 cpu_count = max(1, quota // period)
                 logging.debug(f"cgroup v1 CPU detected: quota={quota}, period={period}, count={cpu_count}")
                 return cpu_count
-        except (ValueError, OSError, IOError) as e:
+        except (ValueError, OSError) as e:
             logging.debug(f"cgroup v1 CPU detection failed: {e}")
         except Exception as e:
             logging.debug(f"Unexpected error in cgroup v1 CPU detection: {e}")
@@ -35,14 +34,14 @@ def detect_cpu_count() -> Optional[int]:
     cpu_max_path = "/sys/fs/cgroup/cpu.max"
     if os.path.exists(cpu_max_path):
         try:
-            with open(cpu_max_path, "r") as f:
+            with open(cpu_max_path) as f:
                 content = f.read().strip()
                 if content != "max":
                     quota, period = map(int, content.split())
                     cpu_count = max(1, quota // period)
                     logging.debug(f"cgroup v2 CPU detected: quota={quota}, period={period}, count={cpu_count}")
                     return cpu_count
-        except (ValueError, OSError, IOError) as e:
+        except (ValueError, OSError) as e:
             logging.debug(f"cgroup v2 CPU detection failed: {e}")
         except Exception as e:
             logging.debug(f"Unexpected error in cgroup v2 CPU detection: {e}")
@@ -50,19 +49,19 @@ def detect_cpu_count() -> Optional[int]:
     return None
 
 
-def detect_memory_mb() -> Optional[int]:
+def detect_memory_mb() -> int | None:
     """Detect memory limit from cgroup."""
     # Try cgroup v1
     memory_limit_path = "/sys/fs/cgroup/memory/memory.limit_in_bytes"
     if os.path.exists(memory_limit_path):
         try:
-            with open(memory_limit_path, "r") as f:
+            with open(memory_limit_path) as f:
                 memory_bytes = int(f.read().strip())
                 if memory_bytes > 0:
                     memory_mb = memory_bytes // (1024 * 1024)
                     logging.debug(f"cgroup v1 memory detected: {memory_bytes} bytes = {memory_mb}MB")
                     return memory_mb
-        except (ValueError, OSError, IOError) as e:
+        except (ValueError, OSError) as e:
             logging.debug(f"cgroup v1 memory detection failed: {e}")
         except Exception as e:
             logging.debug(f"Unexpected error in cgroup v1 memory detection: {e}")
@@ -71,14 +70,14 @@ def detect_memory_mb() -> Optional[int]:
     memory_max_path = "/sys/fs/cgroup/memory.max"
     if os.path.exists(memory_max_path):
         try:
-            with open(memory_max_path, "r") as f:
+            with open(memory_max_path) as f:
                 content = f.read().strip()
                 if content != "max":
                     memory_bytes = int(content)
                     memory_mb = memory_bytes // (1024 * 1024)
                     logging.debug(f"cgroup v2 memory detected: {memory_bytes} bytes = {memory_mb}MB")
                     return memory_mb
-        except (ValueError, OSError, IOError) as e:
+        except (ValueError, OSError) as e:
             logging.debug(f"cgroup v2 memory detection failed: {e}")
         except Exception as e:
             logging.debug(f"Unexpected error in cgroup v2 memory detection: {e}")
@@ -86,7 +85,7 @@ def detect_memory_mb() -> Optional[int]:
     return None
 
 
-def get_optimal_memory_mb() -> Optional[int]:
+def get_optimal_memory_mb() -> int | None:
     """Return detected memory minus a fixed Python reserve (in MB)."""
     try:
         detected_memory = detect_memory_mb()

@@ -3,7 +3,6 @@ SQL parsing utilities for dependency analysis and query processing.
 """
 
 import logging
-from typing import List, Set, Tuple
 
 import sqlglot
 from sqlglot import exp
@@ -17,7 +16,7 @@ class SQLParser:
     def __init__(self):
         self.logger = logging.getLogger(self.__class__.__name__)
 
-    def extract_dependencies_and_outputs(self, sql: str) -> Tuple[Set[str], Set[str]]:
+    def extract_dependencies_and_outputs(self, sql: str) -> tuple[set[str], set[str]]:
         """
         Extract table dependencies and outputs from SQL query.
 
@@ -100,7 +99,7 @@ class SQLParser:
             return set(), set()
 
     @staticmethod
-    def iterate_blocks(blocks: List[Block]):
+    def iterate_blocks(blocks: list[Block]):
         """
         Generator that yields (block, code, script, index) tuples.
 

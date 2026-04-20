@@ -1,5 +1,6 @@
 {
   "parameters": {
+    "duckdb_version": "latest",
     "blocks": [
       {
         "name": "Block 1",

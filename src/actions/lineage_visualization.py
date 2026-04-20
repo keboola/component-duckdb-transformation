@@ -3,7 +3,8 @@ Lineage visualization action for data lineage analysis.
 """
 
 import logging
-from keboola.component.sync_actions import ValidationResult, MessageType
+
+from keboola.component.sync_actions import MessageType, ValidationResult
 
 from sql_parser import SQLParser
 
