@@ -73,7 +73,8 @@ The component uses a block-based configuration structure:
     "max_memory_mb": 2048,
     "dtypes_infer": false,
     "debug": false,
-    "syntax_check_on_startup": false
+    "syntax_check_on_startup": false,
+    "duckdb_version": "latest"
   }
 }
 ```
@@ -85,6 +86,7 @@ The component uses a block-based configuration structure:
 - `dtypes_infer`: Enable automatic data type inference for CSV files (default: false)
 - `debug`: Enable debug logging (default: false)
 - `syntax_check_on_startup`: Validate SQL syntax before execution (default: false)
+- `duckdb_version`: DuckDB runtime version. Use `"latest"` (default) to always resolve to the most recent supported version, or pin to a specific one (e.g. `"1.5.1"`, `"1.4.4"`). See [Supported DuckDB Versions](#supported-duckdb-versions).
 
 **Input Sources:**
 - **Local Files**: CSV and Parquet files from local storage
