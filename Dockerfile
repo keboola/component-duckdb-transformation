@@ -38,5 +38,6 @@ FROM base AS production
 
 ARG VENV_BASE=/code/.venvs
 ENV UV_PROJECT_ENVIRONMENT=$VENV_BASE/duckdb-1.5.1
+ENV UV_NO_CACHE=1
 
 CMD ["uv", "run", "--no-sync", "python", "-u", "/code/src/launcher.py"]
