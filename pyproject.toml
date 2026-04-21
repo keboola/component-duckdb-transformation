@@ -24,14 +24,14 @@ dev = [
     "ruff>=0.12",
     "ty>=0.0.1a6",
 ]
-"duckdb-1.5.1" = ["duckdb==1.5.1"]
+"duckdb-1.5.2" = ["duckdb==1.5.2"]
 "duckdb-1.4.4" = ["duckdb==1.4.4"]
 
 [tool.uv]
-default-groups = ["dev", "duckdb-1.5.1"]
+default-groups = ["dev", "duckdb-1.5.2"]
 conflicts = [
     [
-        { group = "duckdb-1.5.1" },
+        { group = "duckdb-1.5.2" },
         { group = "duckdb-1.4.4" },
     ],
 ]

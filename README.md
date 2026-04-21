@@ -137,7 +137,7 @@ To add a new version, update these five files in order:
 [tool.uv]
 conflicts = [
     [
-        { group = "duckdb-1.5.1" },
+        { group = "duckdb-1.5.2" },
         { group = "duckdb-1.4.4" },
         { group = "duckdb-X.Y.Z" },
     ],
@@ -148,7 +148,7 @@ conflicts = [
 
 ```python
 VENV_NAMES: dict[str, str] = {
-    "1.5.1": "duckdb-1.5.1",
+    "1.5.2": "duckdb-1.5.2",
     "1.4.4": "duckdb-1.4.4",
     "X.Y.Z": "duckdb-X.Y.Z",
 }
@@ -158,13 +158,13 @@ VENV_NAMES: dict[str, str] = {
 
 ```dockerfile
 RUN UV_PROJECT_ENVIRONMENT=$VENV_BASE/duckdb-X.Y.Z \
-    uv sync --group duckdb-X.Y.Z --no-group dev --no-group duckdb-1.5.1 --no-group duckdb-1.4.4 --frozen
+    uv sync --group duckdb-X.Y.Z --no-group dev --no-group duckdb-1.5.2 --no-group duckdb-1.4.4 --frozen
 ```
 
 **4. `component_config/configSchema.json`** — add the version to the enum:
 
 ```json
-"enum": ["latest", "X.Y.Z", "1.5.1", "1.4.4"]
+"enum": ["latest", "X.Y.Z", "1.5.2", "1.4.4"]
 ```
 
 **5. Regenerate the lockfile:**

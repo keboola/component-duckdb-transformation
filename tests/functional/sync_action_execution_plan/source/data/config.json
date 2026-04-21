@@ -1,7 +1,7 @@
 {
     "action": "run",
     "parameters": {
-        "duckdb_version":"1.5.1",
+        "duckdb_version":"1.5.2",
         "debug": false,
         "enable_syntax_check": true,
         "blocks": [
