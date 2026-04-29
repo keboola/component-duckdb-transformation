@@ -22,6 +22,7 @@ class Query:
     outputs: set[str]  # tables this query creates
     block_name: str  # Add block information
     code_name: str  # Add code information
+    statement_type: str = "other"  # "create" | "insert" | "other"
 
 
 @dataclass
@@ -114,14 +115,14 @@ def _create_parallel_batches_for_block(block_queries: list[Query], producers: di
     # Build mapping of tables to CREATE queries in this block
     table_creators = {}
     for query in block_queries:
-        if "CREATE" in query.sql.upper():
+        if query.statement_type == "create":
             for output in query.outputs:
                 table_creators[output] = query
 
     # Build local dependency graph for this block
     for query in block_queries:
         # Add explicit INSERT → CREATE dependencies within the block
-        if "INSERT" in query.sql.upper():
+        if query.statement_type == "insert":
             for output in query.outputs:
                 if output in table_creators:
                     creator = table_creators[output]
@@ -189,6 +190,7 @@ class BlockOrchestrator:
         try:
             # Use SQLParser to extract dependencies and outputs
             dependencies, outputs = self.sql_parser.extract_dependencies_and_outputs(sql)
+            statement_type = self.sql_parser.classify_statement(sql)
             return Query(
                 name=name,
                 sql=sql,
@@ -196,6 +198,7 @@ class BlockOrchestrator:
                 outputs=outputs,
                 block_name=block_name,
                 code_name=code_name,
+                statement_type=statement_type,
             )
         except Exception as e:
             # Fallback to empty sets if parsing fails
@@ -207,6 +210,7 @@ class BlockOrchestrator:
                 outputs=set(),
                 block_name=block_name,
                 code_name=code_name,
+                statement_type="other",
             )
 
     def build_block_execution_plan(self) -> ExecutionPlan:
@@ -234,9 +238,9 @@ class BlockOrchestrator:
         for query in self.queries:
             for output in query.outputs:
                 # Check if this is a CREATE or INSERT query
-                if "CREATE" in query.sql.upper():
+                if query.statement_type == "create":
                     create_producers[output] = query
-                elif "INSERT" in query.sql.upper():
+                elif query.statement_type == "insert":
                     insert_producers[output] = query
                 producers[output] = query
 

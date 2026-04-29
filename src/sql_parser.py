@@ -16,6 +16,28 @@ class SQLParser:
     def __init__(self):
         self.logger = logging.getLogger(self.__class__.__name__)
 
+    def classify_statement(self, sql: str) -> str:
+        """
+        Classify a SQL statement by its top-level type.
+
+        Returns "create", "insert", or "other". Uses AST inspection rather than
+        substring matching so that identifiers like ``createdate`` inside an
+        INSERT body don't get the statement misclassified as a CREATE.
+        """
+        try:
+            parsed = sqlglot.parse(sql, read="duckdb")
+        except Exception as e:
+            self.logger.warning(f"Failed to parse SQL for classification: {e}")
+            return "other"
+        for statement in parsed:
+            if statement is None:
+                continue
+            if isinstance(statement, exp.Insert):
+                return "insert"
+            if isinstance(statement, exp.Create):
+                return "create"
+        return "other"
+
     def extract_dependencies_and_outputs(self, sql: str) -> tuple[set[str], set[str]]:
         """
         Extract table dependencies and outputs from SQL query.
