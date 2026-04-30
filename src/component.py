@@ -17,7 +17,7 @@ from actions.execution_plan_visualization import ExecutionPlanVisualizationActio
 from actions.expected_input_tables import ExpectedInputTablesAction
 from actions.lineage_visualization import LineageVisualizationAction
 from configuration import Configuration
-from in_tables_creator import LocalTableCreator
+from in_tables_creator import FileType, LocalTableCreator
 from query_orchestrator import BlockOrchestrator
 from validators import SQLValidator
 
@@ -147,7 +147,7 @@ class Component(ComponentBase):
             # Input mapping destination overrides the table definition name.
             # For input tables, the storage ID is in in_table.id (not in_table.destination).
             table_name = source_to_destination.get(in_table.id) or in_table.name
-            file_type = source_to_file_type.get(in_table.id, "csv")
+            file_type = FileType(source_to_file_type.get(in_table.id, FileType.CSV))
             result = creator.create_table(in_table, table_name=table_name, file_type=file_type)
             logging.info(f"Input table created: {result.name} (is_view={result.is_view})")
         logging.debug(f"Input tables created in {time.time() - start_time:.2f} seconds")
