@@ -9,7 +9,7 @@ from dataclasses import dataclass
 
 from keboola.component.exceptions import UserException
 
-from sql_parser import SQLParser
+from sql_parser import SQLParser, StatementType
 
 
 @dataclass
@@ -22,7 +22,7 @@ class Query:
     outputs: set[str]  # tables this query creates
     block_name: str  # Add block information
     code_name: str  # Add code information
-    statement_type: str = "other"  # "create" | "insert" | "other"
+    statement_type: StatementType = StatementType.OTHER
 
 
 @dataclass
@@ -115,14 +115,14 @@ def _create_parallel_batches_for_block(block_queries: list[Query], producers: di
     # Build mapping of tables to CREATE queries in this block
     table_creators = {}
     for query in block_queries:
-        if query.statement_type == "create":
+        if query.statement_type == StatementType.CREATE:
             for output in query.outputs:
                 table_creators[output] = query
 
     # Build local dependency graph for this block
     for query in block_queries:
         # Add explicit INSERT → CREATE dependencies within the block
-        if query.statement_type == "insert":
+        if query.statement_type == StatementType.INSERT:
             for output in query.outputs:
                 if output in table_creators:
                     creator = table_creators[output]
@@ -210,7 +210,7 @@ class BlockOrchestrator:
                 outputs=set(),
                 block_name=block_name,
                 code_name=code_name,
-                statement_type="other",
+                statement_type=StatementType.OTHER,
             )
 
     def build_block_execution_plan(self) -> ExecutionPlan:
@@ -238,9 +238,9 @@ class BlockOrchestrator:
         for query in self.queries:
             for output in query.outputs:
                 # Check if this is a CREATE or INSERT query
-                if query.statement_type == "create":
+                if query.statement_type == StatementType.CREATE:
                     create_producers[output] = query
-                elif query.statement_type == "insert":
+                elif query.statement_type == StatementType.INSERT:
                     insert_producers[output] = query
                 producers[output] = query
 
