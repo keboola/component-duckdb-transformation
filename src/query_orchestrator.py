@@ -101,60 +101,73 @@ class ExecutionStats:
         return sum(self.batch_times) / len(self.batch_times) if self.batch_times else 0.0
 
 
-def _create_parallel_batches_for_block(block_queries: list[Query], producers: dict) -> list[Batch]:
+def _create_parallel_batches_for_block(block_queries: list[Query]) -> list[Batch]:
     """
-    Create parallel batches for queries within a single block.
-    Uses topological sort to respect SQL dependencies.
+    Create parallel batches for the queries of a single block using an
+    order-aware topological sort.
+
+    ``block_queries`` is in author order, so a query's list index is its
+    position. A reader of table T binds to the most recent producer of T that
+    *precedes* it (never a later re-creation), and multiple producers of the
+    same table are serialized in author order. This prevents a false "circular
+    dependency" when a block creates the same table more than once (e.g.
+    build -> adjust -> re-build under one name). Table identifiers are compared
+    case-insensitively because DuckDB identifiers are case-insensitive.
     """
-    batches = []
     remaining = {q.name: q for q in block_queries}
-    # Create local dependency graph and in-degree for this block only
-    local_graph = defaultdict(list)
+    local_graph: dict[str, list[str]] = defaultdict(list)
     local_in_degree = {q.name: 0 for q in block_queries}
 
-    # Build mapping of tables to CREATE queries in this block
-    table_creators = {}
-    for query in block_queries:
-        if query.statement_type == StatementType.CREATE:
-            for output in query.outputs:
-                table_creators[output] = query
+    def add_edge(src_index: int, dst_index: int) -> None:
+        """Register 'src must run before dst'; ignore self-edges."""
+        src = block_queries[src_index]
+        dst = block_queries[dst_index]
+        if src.name == dst.name:
+            return
+        local_graph[src.name].append(dst.name)
+        local_in_degree[dst.name] += 1
 
-    # Build local dependency graph for this block
-    for query in block_queries:
-        # Add explicit INSERT → CREATE dependencies within the block
-        if query.statement_type == StatementType.INSERT:
-            for output in query.outputs:
-                if output in table_creators:
-                    creator = table_creators[output]
-                    # Add dependency: CREATE must run before INSERT for the same table
-                    local_graph[creator.name].append(query.name)
-                    local_in_degree[query.name] += 1
+    # Producers of each table within this block, in author order (ascending index).
+    producers_by_table: dict[str, list[int]] = defaultdict(list)
+    for index, query in enumerate(block_queries):
+        for output in query.outputs:
+            producers_by_table[output.casefold()].append(index)
 
+    # Serialize repeated producers of the same table: p0 -> p1 -> p2 ...
+    for indices in producers_by_table.values():
+        for earlier, later in zip(indices, indices[1:]):
+            add_edge(earlier, later)
+
+    # Bind each reader to the correct producer, respecting statement order.
+    for index, query in enumerate(block_queries):
         for dep in query.dependencies:
-            # Check if dependency is produced by another query in this block
-            if dep in producers:
-                producer = producers[dep]
-                # Only add edge if producer is in the same block
-                if producer.name in remaining:
-                    local_graph[producer.name].append(query.name)
-                    local_in_degree[query.name] += 1
+            producer_indices = producers_by_table.get(dep.casefold())
+            if not producer_indices:
+                continue  # produced in an earlier block, or a runtime-missing table
+            preceding = [i for i in producer_indices if i < index]
+            if preceding:
+                add_edge(preceding[-1], index)
+            elif len(producer_indices) == 1:
+                # Single producer written after the reader: keep author-order-agnostic reordering.
+                add_edge(producer_indices[0], index)
+            # else: several producers, all at/after the reader -> treat as external.
+
+    batches: list[Batch] = []
     while remaining:
-        # Find queries with no local dependencies
+        # Find queries with no remaining in-block dependencies.
         ready = [remaining[name] for name in remaining if local_in_degree[name] == 0]
         if not ready:
-            # Check for circular dependencies within block
             remaining_names = list(remaining.keys())
             logging.error("Circular dependency detected in block!")
             logging.error(f"Remaining queries: {remaining_names}")
             for name in remaining_names:
-                remaining_query = remaining[name]
-                logging.error(f"Query '{name}' depends on: {remaining_query.dependencies}")
+                logging.error(f"Query '{name}' depends on: {remaining[name].dependencies}")
             raise UserException(
                 f"Circular dependency detected among queries in block: {', '.join(remaining_names)}. "
                 f"Check your SQL dependencies."
             )
         batches.append(Batch(queries=ready))
-        # Remove processed queries and update local dependencies
+        # Remove processed queries and relax dependents.
         for query in ready:
             del remaining[query.name]
             for dependent in local_graph[query.name]:
@@ -215,57 +228,27 @@ class BlockOrchestrator:
 
     def build_block_execution_plan(self) -> ExecutionPlan:
         """
-        Build execution plan that respects block order but allows parallel execution within blocks.
-        Creates DAG based on SQL dependencies.
+        Build an execution plan that runs blocks consecutively while allowing
+        parallel execution of independent queries within each block.
 
-        Returns:
-            ExecutionPlan containing blocks that must be executed consecutively,
-            where each block contains batches that can run in parallel.
+        Blocks execute in author order, so any table produced in an earlier
+        block is available to later blocks without an explicit edge. Ordering
+        *within* a block is resolved by ``_create_parallel_batches_for_block``
+        using each query's position, which is why a block may safely create the
+        same table more than once.
         """
         if not self.queries:
             return ExecutionPlan(blocks=[])
-        # Group queries by block
-        block_queries = defaultdict(list)
+
+        # Group queries by block, preserving author order.
+        block_queries: dict[str, list[Query]] = defaultdict(list)
         for query in self.queries:
             block_queries[query.block_name].append(query)
-        # Build producer mapping across all queries
-        # For tables that have both CREATE and INSERT, INSERT should be the producer
-        # (because reading from table usually needs data, not just empty structure)
-        producers = {}
-        create_producers = {}
-        insert_producers = {}
 
-        for query in self.queries:
-            for output in query.outputs:
-                # Check if this is a CREATE or INSERT query
-                if query.statement_type == StatementType.CREATE:
-                    create_producers[output] = query
-                elif query.statement_type == StatementType.INSERT:
-                    insert_producers[output] = query
-                producers[output] = query
-
-        # Override with INSERT producers where available (data is more important than structure)
-        # Note: If multiple INSERTs exist for same table, last one becomes producer
-        # This is acceptable as dependency graph still ensures correct execution order
-        for table, insert_query in insert_producers.items():
-            producers[table] = insert_query
-        # Build dependency graph
-        graph = defaultdict(list)
-        in_degree = {q.name: 0 for q in self.queries}
-        for query in self.queries:
-            for dep in query.dependencies:
-                if dep in producers:
-                    producer = producers[dep]
-                    graph[producer.name].append(query.name)
-                    in_degree[query.name] += 1
-                # else: external dependency (input table)
-        # Create execution plan: blocks in order, queries within blocks in parallel
-        blocks = []
-        for block_name in block_queries.keys():
-            block_queries_list = block_queries[block_name]
-            # For each block, create batches of queries that can run in parallel
-            batches = _create_parallel_batches_for_block(block_queries_list, producers)
-            blocks.append(Block(name=block_name, batches=batches))
+        blocks = [
+            Block(name=block_name, batches=_create_parallel_batches_for_block(queries))
+            for block_name, queries in block_queries.items()
+        ]
         return ExecutionPlan(blocks=blocks)
 
     def execute(self) -> ExecutionStats:
