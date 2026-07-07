@@ -119,7 +119,11 @@ class SQLParser:
                             create_outputs.add(statement.this.this.name)
                         elif hasattr(statement.this, "name") and statement.this.name:
                             create_outputs.add(statement.this.name)
-            dependencies = dependencies - create_outputs
+            # A query cannot depend on a table it creates in the same statement.
+            # Compare case-insensitively (DuckDB identifiers are case-insensitive)
+            # but keep the original-case names for any remaining dependencies.
+            create_outputs_normalized = {output.casefold() for output in create_outputs}
+            dependencies = {dep for dep in dependencies if dep.casefold() not in create_outputs_normalized}
 
             return dependencies, outputs
 
