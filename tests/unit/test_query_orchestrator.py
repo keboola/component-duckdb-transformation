@@ -99,3 +99,38 @@ def test_genuine_cycle_still_raises():
     ]
     with pytest.raises(UserException, match="Circular dependency detected among queries in block"):
         _plan_for(blocks)
+
+
+def test_multi_output_producer_read_by_multiple_dependencies():
+    # One query creates two tables (single script, two statements); a later
+    # query reads both. This produces two producer->reader edges with the same
+    # source; the planner must still schedule correctly (edges are self-balancing).
+    blocks = [
+        Block(
+            name="B",
+            codes=[
+                Code(name="make_ab", script=["CREATE TABLE a AS SELECT 1 AS id; CREATE TABLE b AS SELECT 1 AS id;"]),
+                Code(name="join_ab", script=["CREATE TABLE c AS SELECT * FROM a JOIN b USING (id)"]),
+            ],
+        )
+    ]
+    order = _flat_order(_plan_for(blocks))
+    assert order.index("make_ab") < order.index("join_ab")
+
+
+def test_statement_reading_and_recreating_same_table_is_not_a_cycle():
+    # A statement whose table appears in BOTH its dependencies and its outputs
+    # (here an UPDATE that reads the table it updates) after a prior CREATE of
+    # that table produces a duplicate producer->reader edge; it must not be
+    # reported as a circular dependency.
+    blocks = [
+        Block(
+            name="B",
+            codes=[
+                Code(name="seed", script=["CREATE TABLE t AS SELECT 1 AS id, 5 AS v"]),
+                Code(name="bump", script=["UPDATE t SET v = (SELECT max(v) FROM t)"]),
+            ],
+        )
+    ]
+    order = _flat_order(_plan_for(blocks))
+    assert order.index("seed") < order.index("bump")
