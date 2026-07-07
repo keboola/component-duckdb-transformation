@@ -134,3 +134,21 @@ def test_statement_reading_and_recreating_same_table_is_not_a_cycle():
     ]
     order = _flat_order(_plan_for(blocks))
     assert order.index("seed") < order.index("bump")
+
+
+def test_reader_before_all_producers_of_recreated_table_waits_for_final():
+    # A reader written before a table that is CREATEd twice later must still wait
+    # until the table is fully built (bind to the last producer), not run before
+    # the table exists.
+    blocks = [
+        Block(
+            name="B",
+            codes=[
+                Code(name="reader", script=["CREATE TABLE report AS SELECT * FROM x"]),
+                Code(name="p1", script=["CREATE TABLE x AS SELECT 1 AS id"]),
+                Code(name="p2", script=["CREATE OR REPLACE TABLE x AS SELECT 2 AS id"]),
+            ],
+        )
+    ]
+    order = _flat_order(_plan_for(blocks))
+    assert order.index("p1") < order.index("p2") < order.index("reader")

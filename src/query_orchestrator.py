@@ -146,11 +146,13 @@ def _create_parallel_batches_for_block(block_queries: list[Query]) -> list[Batch
                 continue  # produced in an earlier block, or a runtime-missing table
             preceding = [i for i in producer_indices if i < index]
             if preceding:
+                # Bind to the most recent producer before this reader.
                 add_edge(preceding[-1], index)
-            elif len(producer_indices) == 1:
-                # Single producer written after the reader: keep author-order-agnostic reordering.
-                add_edge(producer_indices[0], index)
-            # else: several producers, all at/after the reader -> treat as external.
+            else:
+                # Reader precedes all in-block producers of this table: bind to the
+                # last producer so it waits until the table is fully built (its final
+                # materialized version) instead of racing an earlier re-creation.
+                add_edge(producer_indices[-1], index)
 
     batches: list[Batch] = []
     while remaining:

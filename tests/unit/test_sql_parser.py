@@ -8,7 +8,7 @@ def test_case_variant_self_reference_is_not_a_dependency():
     deps, outputs = SQLParser().extract_dependencies_and_outputs(
         'CREATE OR REPLACE TABLE "BSM_03" AS SELECT * FROM bsm_03'
     )
-    assert not any(d.casefold() == "bsm_03" for d in deps)
+    assert deps == set()
     assert any(o.casefold() == "bsm_03" for o in outputs)
 
 
