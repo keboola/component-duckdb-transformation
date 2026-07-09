@@ -6,7 +6,7 @@ readme = "README.md"
 requires-python = "~=3.13.0"
 dependencies = [
     "freezegun>=1.5.2",
-    "keboola-component>=1.8.3",
+    "keboola-component>=1.11.0",
     "keboola-http-client>=1.0.1",
     "keboola-utils>=1.1.0",
     "packaging>=24",
