@@ -21,7 +21,7 @@ def test_recreating_same_table_in_block_is_not_a_cycle():
     # Last-writer-wins wrongly binds `adjust` to `final`, producing a false cycle.
     blocks = [
         Block(
-            name="MAINCON OFFSET RECONCILIATION FINAL",
+            name="reconciliation block",
             codes=[
                 Code(name="build", script=["CREATE OR REPLACE TABLE bsm_03 AS SELECT * FROM bsm_02"]),
                 Code(
@@ -152,3 +152,33 @@ def test_reader_before_all_producers_of_recreated_table_waits_for_final():
     ]
     order = _flat_order(_plan_for(blocks))
     assert order.index("p1") < order.index("p2") < order.index("reader")
+
+
+def _batch_index(plan, name):
+    """Index of the batch (within block 0) that contains query ``name``."""
+    for i, batch in enumerate(plan.blocks[0].batches):
+        if name in [q.name for q in batch]:
+            return i
+    raise AssertionError(f"{name} not scheduled")
+
+
+def test_reader_between_producers_runs_before_the_recreation():
+    # create t -> read t (into an independent table) -> recreate t.
+    # The reader is bound after the first producer, but it must also be ordered
+    # BEFORE the second producer; otherwise the re-creation can land in the same
+    # parallel batch as the read and race it (reader sees the wrong version).
+    blocks = [
+        Block(
+            name="B",
+            codes=[
+                Code(name="create_t", script=["CREATE TABLE t AS SELECT 1 AS id"]),
+                Code(name="read_t", script=["CREATE TABLE u AS SELECT * FROM t"]),
+                Code(name="recreate_t", script=["CREATE OR REPLACE TABLE t AS SELECT 2 AS id"]),
+            ],
+        )
+    ]
+    plan = _plan_for(blocks)
+    # The read must complete in an earlier batch than the re-creation, never
+    # alongside it.
+    assert _batch_index(plan, "create_t") < _batch_index(plan, "read_t")
+    assert _batch_index(plan, "read_t") < _batch_index(plan, "recreate_t")

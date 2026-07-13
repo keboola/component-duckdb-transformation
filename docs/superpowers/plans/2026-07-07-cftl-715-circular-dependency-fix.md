@@ -70,7 +70,7 @@ def test_recreating_same_table_in_block_is_not_a_cycle():
     # Last-writer-wins wrongly binds `adjust` to `final`, producing a false cycle.
     blocks = [
         Block(
-            name="MAINCON OFFSET RECONCILIATION FINAL",
+            name="reconciliation block",
             codes=[
                 Code(name="build", script=["CREATE OR REPLACE TABLE bsm_03 AS SELECT * FROM bsm_02"]),
                 Code(
@@ -449,7 +449,7 @@ git commit -m "fix: case-insensitive self-reference removal in dependency extrac
 
 ---
 
-## Task 4: Confirm against the real customer block (verification — needs project-10464 access)
+## Task 4: Confirm against the real source block (verification — needs access to the affected project)
 
 This closes the one MED-confidence gap: the fix was proven against a faithful reproduction, not the customer's actual SQL. The strongest confirmation is the block that failed *"regardless of restructuring."*
 
@@ -457,11 +457,11 @@ This closes the one MED-confidence gap: the fix was proven against a faithful re
 - Create (if fetched): `tests/functional/circular_dependency_aje_case3/source/data/config.json` + generated `expected/…`
 
 **Interfaces:**
-- Consumes: the customer configuration on the AWS-US stack (`connection.keboola.com`), project **10464**, branch **1307562**, config **`01kwmevsar2xp4qhjvrqwcdkdc`** ("BI_SALES_MARGIN_DUCK_TEST V2"), block **"AJE CASE 3 DETAIL"**.
+- Consumes: the affected source configuration (identifiers — stack, project, branch, config id, config name, block name — kept in the internal ticket, not in this repo).
 
 - [ ] **Step 1: Obtain the real config**
 
-Get a Storage API token for project 10464 (AWS-US) — via the customer/AE or an internal admin — or an exported config JSON for branch 1307562. Then fetch `parameters.blocks` for config `01kwmevsar2xp4qhjvrqwcdkdc` (and, if useful, `01kw08d88kgdqrvstqmfr7akd6`, block "MAINCON OFFSET RECONCILIATION FINAL"). `kbagent` can pull it once the project is reachable: `kbagent --help` → add/connect the project → fetch the config detail.
+Get a Storage API token for the affected project (identifiers are in the internal ticket) — via an internal admin — or an exported config JSON for the relevant branch. Then fetch `parameters.blocks` for the affected config(s). `kbagent` can pull it once the project is reachable: `kbagent --help` → add/connect the project → fetch the config detail.
 
 If no token is obtainable, **skip this task** — the fix stands on Task 1's reproducer — and note in the PR that real-config confirmation is pending.
 
