@@ -70,9 +70,12 @@ class LocalTableCreator:
     def _get_data_types(self, in_table: TableDefinition) -> dict | None:
         """Get data types for table creation.
 
-        Only columns that expose a "base" data type are pinned; columns without one
-        (e.g. untyped tables or manifests that only carry backend-specific types) are
-        left for DuckDB to infer. Returns None when no base types are available.
+        Columns that expose a "base" data type are pinned to it. Columns without a
+        usable base type (e.g. non-typed tables, or manifests that only carry
+        backend-specific types) default to VARCHAR, mirroring how Keboola stores
+        non-typed columns, instead of being force-cast or left to DuckDB's
+        value-based inference (which could, for example, read a text column of
+        date-like values as DATE and break downstream string handling).
         """
         if self.dtypes_infer:
             self.logger.debug("Using automatic dtype inference")
@@ -82,11 +85,13 @@ class LocalTableCreator:
         for key, value in in_table.schema.items():
             data_types = value.data_types if isinstance(value.data_types, dict) else {}
             base_type = data_types.get("base")
-            if base_type is not None:
+            if base_type is not None and base_type.dtype:
                 dtype[key] = base_type.dtype
+            else:
+                dtype[key] = "VARCHAR"
 
         if not dtype:
-            self.logger.debug("No base data types found in schema, using automatic dtype inference")
+            self.logger.debug("Empty schema, using automatic dtype inference")
             return None
 
         self.logger.debug(f"Using custom dtypes: {dtype}")

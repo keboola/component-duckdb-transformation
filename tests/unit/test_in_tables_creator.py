@@ -34,22 +34,30 @@ class TestGetDataTypes(unittest.TestCase):
         )
         self.assertEqual(self.creator._get_data_types(FakeTable(schema)), {"a": "INTEGER", "b": "STRING"})
 
-    def test_missing_base_column_is_skipped(self):
+    def test_missing_base_column_defaults_to_varchar(self):
         # Regression: column without a "base" data type must not raise
-        # "'NoneType' object has no attribute 'dtype'".
+        # "'NoneType' object has no attribute 'dtype'"; it defaults to VARCHAR.
         schema = OrderedDict(
             a=_column({"base": {"type": "INTEGER"}}),
             b=_column(),  # no data_type -> data_types == {}
             c=_column({"snowflake": {"type": "VARCHAR"}}),  # backend-only, no base
         )
-        self.assertEqual(self.creator._get_data_types(FakeTable(schema)), {"a": "INTEGER"})
+        self.assertEqual(
+            self.creator._get_data_types(FakeTable(schema)),
+            {"a": "INTEGER", "b": "VARCHAR", "c": "VARCHAR"},
+        )
 
-    def test_no_base_types_returns_none(self):
+    def test_non_typed_table_all_varchar(self):
+        # Non-typed table (all columns without a base type) must load as VARCHAR,
+        # matching how Keboola stores non-typed columns.
         schema = OrderedDict(
             a=_column(),
             b=_column({"snowflake": {"type": "VARCHAR"}}),
         )
-        self.assertIsNone(self.creator._get_data_types(FakeTable(schema)))
+        self.assertEqual(
+            self.creator._get_data_types(FakeTable(schema)),
+            {"a": "VARCHAR", "b": "VARCHAR"},
+        )
 
 
 if __name__ == "__main__":
