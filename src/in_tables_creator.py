@@ -67,14 +67,34 @@ class LocalTableCreator:
             self.logger.debug(f"Using direct path: {path}")
         return path
 
-    def _get_data_types(self, in_table: TableDefinition) -> dict:
-        """Get data types for table creation."""
-        if not self.dtypes_infer:
-            dtype = {key: value.data_types.get("base").dtype for key, value in in_table.schema.items()}
-            self.logger.debug(f"Using custom dtypes: {dtype}")
-        else:
-            dtype = None
+    def _get_data_types(self, in_table: TableDefinition) -> dict | None:
+        """Get data types for table creation.
+
+        Columns that expose a "base" data type are pinned to it. Columns without a
+        usable base type (e.g. non-typed tables, or manifests that only carry
+        backend-specific types) default to VARCHAR, mirroring how Keboola stores
+        non-typed columns, instead of being force-cast or left to DuckDB's
+        value-based inference (which could, for example, read a text column of
+        date-like values as DATE and break downstream string handling).
+        """
+        if self.dtypes_infer:
             self.logger.debug("Using automatic dtype inference")
+            return None
+
+        dtype = {}
+        for key, value in in_table.schema.items():
+            data_types = value.data_types if isinstance(value.data_types, dict) else {}
+            base_type = data_types.get("base")
+            if base_type is not None and base_type.dtype:
+                dtype[key] = base_type.dtype
+            else:
+                dtype[key] = "VARCHAR"
+
+        if not dtype:
+            self.logger.debug("Empty schema, using automatic dtype inference")
+            return None
+
+        self.logger.debug(f"Using custom dtypes: {dtype}")
         return dtype
 
     def _create_table_from_parquet(self, table_name: str, in_table: TableDefinition, path) -> CreatedTable:
@@ -122,7 +142,9 @@ class LocalTableCreator:
         self.connection.execute(f"CREATE OR REPLACE TABLE '{table_name}' AS FROM read_parquet('{path}')")
         return CreatedTable(name=table_name, is_view=False)
 
-    def _create_view_from_csv(self, table_name: str, in_table: TableDefinition, path: str, dtype: dict) -> CreatedTable:
+    def _create_view_from_csv(
+        self, table_name: str, in_table: TableDefinition, path: str, dtype: dict | None
+    ) -> CreatedTable:
         """Create view from CSV file with error handling."""
         try:
             quote_char = in_table.enclosure or '"'
