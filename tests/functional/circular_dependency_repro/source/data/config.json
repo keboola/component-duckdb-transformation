@@ -1,0 +1,27 @@
+{
+  "parameters": {
+    "blocks": [
+      {
+        "name": "Recon",
+        "codes": [
+          {
+            "name": "build",
+            "script": ["CREATE OR REPLACE TABLE bsm AS SELECT 1 AS id, 10 AS amount;"]
+          },
+          {
+            "name": "adjust",
+            "script": ["CREATE OR REPLACE TABLE bsm_adj AS SELECT id, amount * 2 AS amount FROM bsm;"]
+          },
+          {
+            "name": "final",
+            "script": ["CREATE OR REPLACE TABLE bsm AS SELECT * FROM bsm_adj;"]
+          }
+        ]
+      }
+    ]
+  },
+  "storage": {
+    "input": { "tables": [] },
+    "output": { "tables": [{ "destination": "out.bsm", "source": "bsm" }] }
+  }
+}
