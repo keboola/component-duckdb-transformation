@@ -160,7 +160,7 @@ class Component(ComponentBase):
                 # Get table schema
                 table_meta = self._connection.execute(f"DESCRIBE TABLE '{table.source}';").fetchall()
                 schema = {
-                    c[0]: ColumnDefinition(data_types=BaseType(dtype=self.convert_base_types(c[1]))) for c in table_meta
+                    c[0]: ColumnDefinition(data_types=self.duckdb_type_to_base_type(c[1])) for c in table_meta
                 }
                 # Create output table definition
                 out_table = self.create_out_table_definition(
@@ -193,10 +193,15 @@ class Component(ComponentBase):
             self.write_manifest(out_file)
         logging.debug(f"Output files exported in {time.time() - start_time:.2f} seconds")
 
-    @staticmethod
-    def convert_base_types(dtype: str):
-        dtype = dtype.split("(")[0]
+    # DuckDB base-type names whose parenthesized modifier is a meaningful length /
+    # precision-scale (as opposed to complex types like STRUCT(...) that also use parentheses).
+    _LENGTH_BEARING_TYPES = frozenset(
+        {"DECIMAL", "NUMERIC", "VARCHAR", "CHAR", "BPCHAR", "STRING", "TEXT"}
+    )
 
+    @staticmethod
+    def _map_base_type(dtype: str) -> SupportedDataTypes:
+        """Map a DuckDB base type name (without any length/precision modifier) to a Keboola type."""
         if dtype in [
             "TINYINT",
             "SMALLINT",
@@ -210,7 +215,7 @@ class Component(ComponentBase):
             "UHUGEINT",
         ]:
             return SupportedDataTypes.INTEGER
-        elif dtype in ["REAL", "DECIMAL"]:
+        elif dtype in ["REAL", "DECIMAL", "NUMERIC"]:
             return SupportedDataTypes.NUMERIC
         elif dtype == "DOUBLE":
             return SupportedDataTypes.FLOAT
@@ -222,6 +227,29 @@ class Component(ComponentBase):
             return SupportedDataTypes.DATE
         else:
             return SupportedDataTypes.STRING
+
+    @staticmethod
+    def duckdb_type_to_base_type(duckdb_type: str) -> BaseType:
+        """Convert a DuckDB column type (from DESCRIBE) into a Keboola BaseType.
+
+        The parenthesized modifier is preserved so that Storage reproduces the intended
+        type instead of a max default: DuckDB ``DECIMAL(p,s)`` -> ``length="p,s"`` (Keboola's
+        ``precision,scale`` format) and ``VARCHAR(n)`` -> ``length="n"``. The length is only
+        read for base-type names that genuinely carry one, so complex types that fall through
+        to STRING (e.g. ``STRUCT(a INTEGER)``, ``INTEGER[]``) never leak their inner definition
+        into ``length``.
+
+        Note: DuckDB does not retain VARCHAR length internally, so casts like ``VARCHAR(2)``
+        arrive here already collapsed to plain ``VARCHAR`` and cannot be recovered.
+        """
+        base_name = duckdb_type.split("(")[0].strip().upper()
+        dtype = Component._map_base_type(base_name)
+
+        length = None
+        if "(" in duckdb_type and base_name in Component._LENGTH_BEARING_TYPES:
+            length = duckdb_type[duckdb_type.index("(") + 1 : duckdb_type.rindex(")")].strip()
+
+        return BaseType(dtype=dtype, length=length)
 
 
 """
