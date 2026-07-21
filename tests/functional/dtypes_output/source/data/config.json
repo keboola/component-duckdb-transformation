@@ -1,0 +1,30 @@
+{
+  "parameters": {
+    "blocks": [
+      {
+        "name": "Block 1",
+        "codes": [
+          {
+            "name": "Typed output",
+            "script": [
+              "CREATE VIEW 'typed.csv' AS SELECT\n  CAST(1 AS DECIMAL(1,0)) AS small_num,\n  CAST(1.5 AS DECIMAL(10,2)) AS dec_num,\n  CAST(5 AS INTEGER) AS int_col,\n  CAST('ab' AS VARCHAR) AS str_col;"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "storage": {
+    "output": {
+      "tables": [
+        {
+          "destination": "out.c-out.typed",
+          "source": "typed.csv"
+        }
+      ]
+    },
+    "input": {
+      "tables": []
+    }
+  }
+}
