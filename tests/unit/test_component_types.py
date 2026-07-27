@@ -49,6 +49,13 @@ class TestDuckdbTypeToBaseType(unittest.TestCase):
         self._assert("TIMESTAMP", SupportedDataTypes.TIMESTAMP, None)
         self._assert("TIMESTAMP WITH TIME ZONE", SupportedDataTypes.TIMESTAMP, None)
 
+    def test_timestamp_precision_variants(self):
+        # The customer's case: TIMESTAMP_S came out as VARCHAR(16777216) because the
+        # sub-second precision variants were not recognized and fell back to STRING.
+        self._assert("TIMESTAMP_S", SupportedDataTypes.TIMESTAMP, None)
+        self._assert("TIMESTAMP_MS", SupportedDataTypes.TIMESTAMP, None)
+        self._assert("TIMESTAMP_NS", SupportedDataTypes.TIMESTAMP, None)
+
     def test_complex_type_falls_back_to_string_without_length(self):
         # STRUCT(...) / arrays must not leak their inner definition into `length`.
         self._assert("STRUCT(a INTEGER)", SupportedDataTypes.STRING, None)
