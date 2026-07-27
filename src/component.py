@@ -159,9 +159,7 @@ class Component(ComponentBase):
             try:
                 # Get table schema
                 table_meta = self._connection.execute(f"DESCRIBE TABLE '{table.source}';").fetchall()
-                schema = {
-                    c[0]: ColumnDefinition(data_types=self.duckdb_type_to_base_type(c[1])) for c in table_meta
-                }
+                schema = {c[0]: ColumnDefinition(data_types=self.duckdb_type_to_base_type(c[1])) for c in table_meta}
                 # Create output table definition
                 out_table = self.create_out_table_definition(
                     name=table.source,
@@ -195,9 +193,7 @@ class Component(ComponentBase):
 
     # DuckDB base-type names whose parenthesized modifier is a meaningful length /
     # precision-scale (as opposed to complex types like STRUCT(...) that also use parentheses).
-    _LENGTH_BEARING_TYPES = frozenset(
-        {"DECIMAL", "NUMERIC", "VARCHAR", "CHAR", "BPCHAR", "STRING", "TEXT"}
-    )
+    _LENGTH_BEARING_TYPES = frozenset({"DECIMAL", "NUMERIC", "VARCHAR", "CHAR", "BPCHAR", "STRING", "TEXT"})
 
     @staticmethod
     def _map_base_type(dtype: str) -> SupportedDataTypes:
@@ -221,7 +217,16 @@ class Component(ComponentBase):
             return SupportedDataTypes.FLOAT
         elif dtype == "BOOLEAN":
             return SupportedDataTypes.BOOLEAN
-        elif dtype in ["TIMESTAMP", "TIMESTAMP WITH TIME ZONE"]:
+        elif dtype in [
+            "TIMESTAMP",
+            "TIMESTAMP WITH TIME ZONE",
+            "TIMESTAMP_S",
+            "TIMESTAMP_MS",
+            "TIMESTAMP_NS",
+        ]:
+            # DuckDB exposes sub-second precision as distinct named types
+            # (TIMESTAMP_S/_MS/_NS) rather than a TIMESTAMP(p) modifier. They all
+            # map to Keboola TIMESTAMP; without these they fell through to STRING.
             return SupportedDataTypes.TIMESTAMP
         elif dtype == "DATE":
             return SupportedDataTypes.DATE
