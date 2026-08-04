@@ -46,15 +46,19 @@ class TestDuckdbTypeToBaseType(unittest.TestCase):
         self._assert("DATE", SupportedDataTypes.DATE, None)
 
     def test_timestamp(self):
+        # Plain TIMESTAMP (microsecond) and TIMESTAMPTZ are deliberately left without an
+        # explicit length so Storage keeps its default width — the common case is unchanged
+        # to avoid a platform-wide precision shift on existing configs.
         self._assert("TIMESTAMP", SupportedDataTypes.TIMESTAMP, None)
         self._assert("TIMESTAMP WITH TIME ZONE", SupportedDataTypes.TIMESTAMP, None)
 
     def test_timestamp_precision_variants(self):
-        # The customer's case: TIMESTAMP_S came out as VARCHAR(16777216) because the
-        # sub-second precision variants were not recognized and fell back to STRING.
-        self._assert("TIMESTAMP_S", SupportedDataTypes.TIMESTAMP, None)
-        self._assert("TIMESTAMP_MS", SupportedDataTypes.TIMESTAMP, None)
-        self._assert("TIMESTAMP_NS", SupportedDataTypes.TIMESTAMP, None)
+        # The customer's case: TIMESTAMP_S must land as TIMESTAMP_NTZ(0), not (9). DuckDB
+        # encodes sub-second precision in the type name, so each variant maps to its Keboola
+        # fractional-seconds precision: _S = second (0), _MS = millisecond (3), _NS = nanosecond (9).
+        self._assert("TIMESTAMP_S", SupportedDataTypes.TIMESTAMP, "0")
+        self._assert("TIMESTAMP_MS", SupportedDataTypes.TIMESTAMP, "3")
+        self._assert("TIMESTAMP_NS", SupportedDataTypes.TIMESTAMP, "9")
 
     def test_complex_type_falls_back_to_string_without_length(self):
         # STRUCT(...) / arrays must not leak their inner definition into `length`.
