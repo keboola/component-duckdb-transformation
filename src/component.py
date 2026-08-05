@@ -195,6 +195,16 @@ class Component(ComponentBase):
     # precision-scale (as opposed to complex types like STRUCT(...) that also use parentheses).
     _LENGTH_BEARING_TYPES = frozenset({"DECIMAL", "NUMERIC", "VARCHAR", "CHAR", "BPCHAR", "STRING", "TEXT"})
 
+    # DuckDB encodes sub-second timestamp precision in the type NAME, not a TIMESTAMP(p)
+    # modifier, so the fractional-seconds precision can't be parsed from parentheses like
+    # DECIMAL(p,s) — it has to be looked up from the name. Map each variant to the Keboola
+    # TIMESTAMP length (= fractional-seconds precision) so Storage creates TIMESTAMP_NTZ(p)
+    # instead of defaulting to (9): TIMESTAMP_S = second, _MS = millisecond, _NS = nanosecond.
+    # Plain TIMESTAMP (microsecond) and TIMESTAMP WITH TIME ZONE are deliberately left with no
+    # explicit length (Storage default) — the common case is unchanged to keep the blast radius
+    # off existing configs; only the explicit precision variants get a tightened width.
+    _TIMESTAMP_PRECISION = {"TIMESTAMP_S": "0", "TIMESTAMP_MS": "3", "TIMESTAMP_NS": "9"}
+
     @staticmethod
     def _map_base_type(dtype: str) -> SupportedDataTypes:
         """Map a DuckDB base type name (without any length/precision modifier) to a Keboola type."""
@@ -244,6 +254,11 @@ class Component(ComponentBase):
         to STRING (e.g. ``STRUCT(a INTEGER)``, ``INTEGER[]``) never leak their inner definition
         into ``length``.
 
+        Sub-second timestamp precision is carried in the DuckDB type *name*
+        (``TIMESTAMP_S`` / ``_MS`` / ``_NS``) rather than a ``TIMESTAMP(p)`` modifier, so it is
+        looked up from ``_TIMESTAMP_PRECISION`` and emitted as the Keboola ``length`` -> Storage
+        creates ``TIMESTAMP_NTZ(0/3/9)`` instead of defaulting to ``(9)``.
+
         Note: DuckDB does not retain VARCHAR length internally, so casts like ``VARCHAR(2)``
         arrive here already collapsed to plain ``VARCHAR`` and cannot be recovered.
         """
@@ -253,6 +268,8 @@ class Component(ComponentBase):
         length = None
         if "(" in duckdb_type and base_name in Component._LENGTH_BEARING_TYPES:
             length = duckdb_type[duckdb_type.index("(") + 1 : duckdb_type.rindex(")")].strip()
+        elif base_name in Component._TIMESTAMP_PRECISION:
+            length = Component._TIMESTAMP_PRECISION[base_name]
 
         return BaseType(dtype=dtype, length=length)
 
