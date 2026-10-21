@@ -45,6 +45,24 @@ class SQLParser:
                 return StatementType.CREATE
         return StatementType.OTHER
 
+    def is_session_statement(self, sql: str) -> bool:
+        """
+        Whether the SQL contains a `SET`, `SET VARIABLE` or `RESET` statement.
+
+        - These change connection-scoped state that later statements rely on but never reference as a table.
+        """
+        try:
+            parsed = sqlglot.parse(sql, read="duckdb")
+        except Exception as e:
+            self.logger.warning(f"Failed to parse SQL for session statement detection: {e}")
+            return False
+        return any(
+            isinstance(statement, exp.Set)
+            or (isinstance(statement, exp.Command) and str(statement.this).upper() == "RESET")
+            for statement in parsed
+            if statement is not None
+        )
+
     def extract_dependencies_and_outputs(self, sql: str) -> tuple[set[str], set[str]]:
         """
         Extract table dependencies and outputs from SQL query.

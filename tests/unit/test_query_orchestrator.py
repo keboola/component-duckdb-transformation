@@ -1,3 +1,6 @@
+import datetime
+
+import duckdb
 import pytest
 from keboola.component.exceptions import UserException
 
@@ -182,3 +185,152 @@ def test_reader_between_producers_runs_before_the_recreation():
     # alongside it.
     assert _batch_index(plan, "create_t") < _batch_index(plan, "read_t")
     assert _batch_index(plan, "read_t") < _batch_index(plan, "recreate_t")
+
+
+def test_session_statement_runs_before_other_queries_of_block():
+    blocks = [
+        Block(
+            name="B",
+            codes=[
+                Code(
+                    name="code",
+                    script=[
+                        "SET TimeZone = 'UTC'",
+                        "SET VARIABLE snapshot_date = DATE '2026-10-20'",
+                        "CREATE TABLE out AS SELECT getvariable('snapshot_date') AS d",
+                    ],
+                ),
+                Code(name="other", script=["CREATE TABLE other AS SELECT 1 AS id"]),
+            ],
+        )
+    ]
+    batches = [[q.name for q in batch] for batch in _plan_for(blocks).blocks[0].batches]
+    assert batches == [["code_0"], ["code_1"], ["code_2", "other"]]
+
+
+def test_session_statement_waits_for_tables_it_reads():
+    blocks = [
+        Block(
+            name="B",
+            codes=[
+                Code(name="unrelated", script=["CREATE TABLE u AS SELECT 1 AS id"]),
+                Code(name="params", script=["CREATE TABLE params AS SELECT DATE '2026-10-20' AS d"]),
+                Code(name="set_var", script=["SET VARIABLE d = (SELECT max(d) FROM params)"]),
+                Code(name="use_var", script=["CREATE TABLE out AS SELECT getvariable('d') AS d"]),
+            ],
+        )
+    ]
+    plan = _plan_for(blocks)
+    assert _batch_index(plan, "params") < _batch_index(plan, "set_var")
+    assert _batch_index(plan, "set_var") < _batch_index(plan, "unrelated")
+    assert _batch_index(plan, "set_var") < _batch_index(plan, "use_var")
+
+
+def test_session_statement_between_reader_and_its_later_producer_is_not_a_cycle():
+    blocks = [
+        Block(
+            name="B",
+            codes=[
+                Code(name="reader", script=["CREATE TABLE report AS SELECT * FROM x"]),
+                Code(name="set_tz", script=["SET TimeZone = 'UTC'"]),
+                Code(name="producer", script=["CREATE TABLE x AS SELECT 1 AS id"]),
+            ],
+        )
+    ]
+    order = _flat_order(_plan_for(blocks))
+    assert order.index("set_tz") < order.index("producer") < order.index("reader")
+
+
+def _run(blocks, threads=4):
+    connection = duckdb.connect()
+    orchestrator = BlockOrchestrator(connection=connection, max_workers=threads)
+    orchestrator.add_queries_from_blocks(blocks)
+    orchestrator.execute()
+    return connection
+
+
+def test_session_state_is_propagated_to_following_blocks():
+    blocks = [
+        Block(
+            name="Block 1",
+            codes=[Code(name="set", script=["SET VARIABLE test_var = 42", "SET TimeZone = 'America/New_York'"])],
+        ),
+        Block(
+            name="Block 2",
+            codes=[
+                Code(
+                    name="check",
+                    script=[
+                        "CREATE TABLE out AS SELECT getvariable('test_var') AS v, current_setting('TimeZone') AS tz",
+                    ],
+                )
+            ],
+        ),
+    ]
+    connection = _run(blocks)
+    assert connection.execute("SELECT v, tz FROM out").fetchall() == [(42, "America/New_York")]
+
+
+def test_session_state_is_applied_to_parallel_queries_of_same_code():
+    blocks = [
+        Block(
+            name="B",
+            codes=[
+                Code(
+                    name="code",
+                    script=[
+                        "SET TimeZone = 'UTC'",
+                        "SET VARIABLE snapshot_date = DATE '2026-10-20'",
+                        "CREATE TABLE a AS SELECT getvariable('snapshot_date') AS d, current_setting('TimeZone') AS tz",
+                        "CREATE TABLE b AS SELECT getvariable('snapshot_date') AS d, current_setting('TimeZone') AS tz",
+                    ],
+                )
+            ],
+        )
+    ]
+    connection = _run(blocks)
+    expected = [(datetime.date(2026, 10, 20), "UTC")]
+    assert connection.execute("SELECT d, tz FROM a").fetchall() == expected
+    assert connection.execute("SELECT d, tz FROM b").fetchall() == expected
+
+
+def test_session_state_keeps_types_and_resets():
+    blocks = [
+        Block(
+            name="Block 1",
+            codes=[
+                Code(
+                    name="set",
+                    script=[
+                        "SET TimeZone = 'America/New_York'",
+                        "SET VARIABLE ts = TIMESTAMPTZ '2026-10-20 10:00:00+02'",
+                        "SET VARIABLE items = ['a,b', NULL]",
+                        "SET VARIABLE nothing = NULL::DATE",
+                        "SET VARIABLE dropped = 1",
+                        "RESET VARIABLE dropped",
+                    ],
+                )
+            ],
+        ),
+        Block(
+            name="Block 2",
+            codes=[
+                Code(
+                    name="check",
+                    script=[
+                        "CREATE TABLE out AS SELECT "
+                        "getvariable('ts') = TIMESTAMPTZ '2026-10-20 08:00:00+00' AS ts_ok, "
+                        "typeof(getvariable('ts')) AS ts_type, "
+                        "getvariable('items') AS items, "
+                        "getvariable('nothing') IS NULL AS nothing_is_null, "
+                        "typeof(getvariable('nothing')) AS nothing_type, "
+                        "getvariable('dropped') IS NULL AS dropped",
+                    ],
+                )
+            ],
+        ),
+    ]
+    connection = _run(blocks)
+    assert connection.execute("SELECT * FROM out").fetchall() == [
+        (True, "TIMESTAMP WITH TIME ZONE", ["a,b", None], True, "DATE", True)
+    ]
