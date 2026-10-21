@@ -67,7 +67,7 @@ class SessionState:
 
         variables = []
         for name, variable_type in cursor.execute(VARIABLES_QUERY).fetchall():
-            value = cursor.execute(f"SELECT getvariable({_quote_literal(name)})::VARCHAR").fetchone()[0]
+            [(value,)] = cursor.execute(f"SELECT getvariable({_quote_literal(name)})::VARCHAR").fetchall()
             variables.append(Variable(name=name, type=variable_type, value=value))
 
         state = SessionState(settings=settings, variables=tuple(variables))
