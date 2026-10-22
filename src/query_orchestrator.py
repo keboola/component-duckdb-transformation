@@ -183,9 +183,14 @@ def _create_parallel_batches_for_block(block_queries: list[Query]) -> list[Batch
                 # materialized version) instead of racing an earlier re-creation.
                 add_edge(producer_indices[-1], index)
 
-    # Session statements keep their author order among themselves.
+    # Session statements keep their author order among themselves, unless the table
+    # dependencies already force the opposite order. Adding the edge regardless would
+    # close a cycle and fail the whole block with a spurious "Circular dependency
+    # detected" error, so table correctness wins and the author order is dropped.
     session_indices = [index for index, query in enumerate(block_queries) if query.is_session]
     for earlier, later in zip(session_indices, session_indices[1:]):
+        if block_queries[later].name in _ancestors(block_queries[earlier].name, local_graph):
+            continue
         add_edge(earlier, later)
 
     # Run each session statement before every query it does not itself depend on.

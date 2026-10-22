@@ -334,3 +334,49 @@ def test_session_state_keeps_types_and_resets():
     assert connection.execute("SELECT * FROM out").fetchall() == [
         (True, "TIMESTAMP WITH TIME ZONE", ["a,b", None], True, "DATE", True)
     ]
+
+
+def test_session_statement_order_does_not_create_false_cycle():
+    # Two SET statements read a table that the block creates twice. Table dependencies
+    # force `probe_after` (bound to the final version) to run after `rebuild`, and
+    # `probe_before` to run before it -- the opposite of their author order. Keeping the
+    # author order between session statements must not win here, or the block fails with
+    # a spurious "Circular dependency detected" error.
+    blocks = [
+        Block(
+            name="snapshot block",
+            codes=[
+                Code(name="probe_after", script=["SET VARIABLE later = (SELECT max(x) FROM t2)"]),
+                Code(name="build", script=["CREATE OR REPLACE TABLE t2 AS SELECT 1 AS x"]),
+                Code(name="probe_before", script=["SET VARIABLE earlier = (SELECT max(x) FROM t2)"]),
+                Code(name="rebuild", script=["CREATE OR REPLACE TABLE t2 AS SELECT 2 AS x"]),
+            ],
+        )
+    ]
+
+    plan = _plan_for(blocks)  # must not raise
+
+    order = _flat_order(plan)
+    assert order.index("probe_before") < order.index("rebuild")
+    assert order.index("rebuild") < order.index("probe_after")
+
+
+def test_session_statement_never_shares_a_batch_with_another_query():
+    # Session state is captured into orchestrator state after a SET runs, so a session
+    # statement must never execute concurrently with anything else in its block.
+    blocks = [
+        Block(
+            name="mixed block",
+            codes=[
+                Code(name="independent_a", script=["CREATE OR REPLACE TABLE a AS SELECT 1"]),
+                Code(name="set_tz", script=["SET TimeZone = 'UTC'"]),
+                Code(name="independent_b", script=["CREATE OR REPLACE TABLE b AS SELECT 2"]),
+            ],
+        )
+    ]
+
+    plan = _plan_for(blocks)
+
+    for batch in plan.blocks[0].batches:
+        if any(query.is_session for query in batch):
+            assert len(batch) == 1, "a session statement must run alone in its batch"
