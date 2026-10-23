@@ -380,3 +380,68 @@ def test_session_statement_never_shares_a_batch_with_another_query():
     for batch in plan.blocks[0].batches:
         if any(query.is_session for query in batch):
             assert len(batch) == 1, "a session statement must run alone in its batch"
+
+
+def test_session_variable_that_cannot_be_passed_on_fails_explicitly():
+    blocks = [
+        Block(
+            name="B",
+            codes=[
+                Code(
+                    name="set",
+                    script=["SET VARIABLE u = union_value(num := 2)::UNION(num INTEGER, str VARCHAR)"],
+                )
+            ],
+        )
+    ]
+    with pytest.raises(UserException, match="Variable 'u' of type UNION"):
+        _run(blocks)
+
+
+def test_session_state_round_trips_complex_types():
+    values = {
+        "blob": "'\\xAA\\x00ab'::BLOB",
+        "struct_value": "{'a': 'it''s, \"x\"', 'b': [1, NULL], 'c': {'d': DATE '2026-01-01'}}",
+        "map_value": "MAP {'k,1': [1.5, 2.25], 'k2': []}",
+        "dec": "123.4500::DECIMAL(18,4)",
+        "flt": "1.1::FLOAT",
+        "nan": "'NaN'::DOUBLE",
+        "iv": "INTERVAL '1 month 2 days 3 seconds'",
+        "huge": "170141183460469231731687303715884105727::HUGEINT",
+        "ts_ns": "'2026-01-01 00:00:00.123456789'::TIMESTAMP_NS",
+        "js": '\'{"a": [1, "b"]}\'::JSON',
+        "fixed": "[1, 2, 3]::INTEGER[3]",
+        "text": "'line1\nline2 \\ ''q'''",
+        "nested": "[MAP {1: {'x': 'y'}}]",
+    }
+    connection = duckdb.connect()
+    expected = {}
+    for name, sql in values.items():
+        expected[name] = connection.execute(f"SELECT {sql}::VARCHAR, typeof({sql})").fetchone()
+    blocks = [
+        Block(
+            name="Block 1",
+            codes=[Code(name="set", script=[f"SET VARIABLE {name} = {sql}" for name, sql in values.items()])],
+        ),
+        Block(
+            name="Block 2",
+            codes=[
+                Code(
+                    name="check",
+                    script=[
+                        "CREATE TABLE out AS "
+                        + " UNION ALL ".join(
+                            f"SELECT '{name}' AS name, getvariable('{name}')::VARCHAR AS v, "
+                            f"typeof(getvariable('{name}')) AS t"
+                            for name in values
+                        )
+                    ],
+                )
+            ],
+        ),
+    ]
+    orchestrator = BlockOrchestrator(connection=connection, max_workers=4)
+    orchestrator.add_queries_from_blocks(blocks)
+    orchestrator.execute()
+    actual = {name: (v, t) for name, v, t in connection.execute("SELECT name, v, t FROM out").fetchall()}
+    assert actual == expected

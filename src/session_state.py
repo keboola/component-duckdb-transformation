@@ -4,8 +4,10 @@ import logging
 from dataclasses import dataclass, field
 
 from duckdb import DuckDBPyConnection
+from keboola.component.exceptions import UserException
 
-SETTINGS_QUERY = "SELECT name, value FROM duckdb_settings()"
+# Only LOCAL settings can differ per connection; a plain SET of a GLOBAL setting is already shared.
+SETTINGS_QUERY = "SELECT name, value FROM duckdb_settings() WHERE scope = 'LOCAL'"
 VARIABLES_QUERY = "SELECT name, type FROM duckdb_variables() ORDER BY name"
 
 
@@ -68,9 +70,25 @@ class SessionState:
         variables = []
         for name, variable_type in cursor.execute(VARIABLES_QUERY).fetchall():
             [(value,)] = cursor.execute(f"SELECT getvariable({_quote_literal(name)})::VARCHAR").fetchall()
+            [(round_trips,)] = cursor.execute(
+                f"SELECT CAST(? AS {variable_type}) IS NOT DISTINCT FROM getvariable({_quote_literal(name)})",
+                [value],
+            ).fetchall()
+            if not round_trips:
+                raise UserException(
+                    f"Variable '{name}' of type {variable_type} cannot be passed to the following queries. "
+                    "Use a supported type (e.g. VARCHAR, numbers, dates, lists, structs) or a one-row table."
+                )
             variables.append(Variable(name=name, type=variable_type, value=value))
 
         state = SessionState(settings=settings, variables=tuple(variables))
+        check_cursor = connection.cursor()
+        try:
+            state.apply(check_cursor)
+        except Exception as e:
+            raise UserException(f"Session state cannot be passed to the following queries: {e}") from e
+        finally:
+            check_cursor.close()
         logging.info(
             f"Session state applied to all following queries: settings {sorted(state.settings)}, "
             f"variables {[variable.name for variable in state.variables]}"
