@@ -8,7 +8,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from versions import DEFAULT_VERSION, SUPPORTED_VERSIONS, venv_name
+from versions import DEFAULT_VERSION, EXPERIMENTAL_VERSIONS, SUPPORTED_VERSIONS, venv_name
 
 
 def get_locked_versions() -> set[str]:
@@ -58,6 +58,10 @@ def main() -> int:
 
     if DEFAULT_VERSION not in SUPPORTED_VERSIONS:
         print(f"FAIL: DEFAULT_VERSION={DEFAULT_VERSION} is not in SUPPORTED_VERSIONS")
+        fail = True
+
+    for version in sorted(EXPERIMENTAL_VERSIONS - SUPPORTED_VERSIONS):
+        print(f"FAIL: experimental duckdb=={version} is not in SUPPORTED_VERSIONS")
         fail = True
 
     if fail:
