@@ -86,7 +86,7 @@ The component uses a block-based configuration structure:
 - `dtypes_infer`: Enable automatic data type inference for CSV files (default: false)
 - `debug`: Enable debug logging (default: false)
 - `syntax_check_on_startup`: Validate SQL syntax before execution (default: false)
-- `duckdb_version`: DuckDB runtime version. Use `"latest"` (default) to always resolve to the most recent supported version, or pin to a specific one (e.g. `"1.5.1"`, `"1.4.4"`). See [Supported DuckDB Versions](#supported-duckdb-versions).
+- `duckdb_version`: DuckDB runtime version. Use `"latest"` (default) to always resolve to the most recent supported version, or pin to a specific one (e.g. `"2.0.0"`, `"1.5.2"`, `"1.4.4"`). See [Supported DuckDB Versions](#supported-duckdb-versions).
 
 **Input Sources:**
 - **Local Files**: CSV and Parquet files from local storage
@@ -123,10 +123,16 @@ SQL Syntax and Naming Conventions
 Supported DuckDB Versions
 -------------------------
 
-Each supported DuckDB version gets its own isolated venv built into the Docker image.
-The `latest` UI option always resolves to the most recent version at runtime.
+| Version | Status |
+|---------|--------|
+| `2.0.0` | Current (`latest` resolves here) |
+| `1.5.2` | |
+| `1.4.4` | LTS |
 
-To add a new version, update these five files in order:
+Each supported DuckDB version gets its own isolated venv built into the Docker image.
+The `latest` UI option resolves to the highest version in `SUPPORTED_VERSIONS` (`src/versions.py`).
+
+To add a new version, update these files in order:
 
 **1. `pyproject.toml`** — add a dependency group and extend the conflicts list:
 
@@ -139,43 +145,33 @@ conflicts = [
     [
         { group = "duckdb-1.5.2" },
         { group = "duckdb-1.4.4" },
+        { group = "duckdb-2.0.0" },
         { group = "duckdb-X.Y.Z" },
     ],
 ]
 ```
 
-**2. `src/versions.py`** — add the version mapping (order does not matter, the highest version is detected automatically):
-
-```python
-VENV_NAMES: dict[str, str] = {
-    "1.5.2": "duckdb-1.5.2",
-    "1.4.4": "duckdb-1.4.4",
-    "X.Y.Z": "duckdb-X.Y.Z",
-}
-```
+**2. `src/versions.py`** — add the version to `SUPPORTED_VERSIONS` (order does not matter, the highest
+version becomes `latest`).
 
 **3. `Dockerfile`** — add a venv build step in the `base` stage:
 
 ```dockerfile
 RUN UV_PROJECT_ENVIRONMENT=$VENV_BASE/duckdb-X.Y.Z \
-    uv sync --group duckdb-X.Y.Z --no-group dev --no-group duckdb-1.5.2 --no-group duckdb-1.4.4 --frozen
+    uv sync --group duckdb-X.Y.Z --no-group dev --no-group duckdb-1.5.2 --frozen
 ```
 
-**4. `component_config/configSchema.json`** — add the version to the enum:
-
-```json
-"enum": ["latest", "X.Y.Z", "1.5.2", "1.4.4"]
-```
-
-**5. Regenerate the lockfile:**
+**4. Regenerate the lockfile:**
 
 ```sh
 uv lock
 ```
 
-The CI `pre-check` job runs before any Docker build and validates that the lockfile
-and `versions.py` are consistent. If any file is out of sync it fails immediately
-with a message pointing to the exact fix needed. To run the check locally:
+**5. UI** — add the option to `DUCKDB_VERSION_OPTIONS` in
+`apps/kbc-ui/src/scripts/modules/transformations-v2/constants.ts` in [keboola/ui](https://github.com/keboola/ui).
+
+The CI `pre-check` job runs before any Docker build and validates that the lockfile, `versions.py`
+and the Dockerfile are consistent. To run the check locally:
 
 ```sh
 PYTHONPATH=src uv run python scripts/check_versions.py
