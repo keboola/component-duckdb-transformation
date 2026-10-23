@@ -86,7 +86,7 @@ The component uses a block-based configuration structure:
 - `dtypes_infer`: Enable automatic data type inference for CSV files (default: false)
 - `debug`: Enable debug logging (default: false)
 - `syntax_check_on_startup`: Validate SQL syntax before execution (default: false)
-- `duckdb_version`: DuckDB runtime version. Use `"latest"` (default) to always resolve to the most recent stable version, or pin to a specific one (e.g. `"1.5.2"`, `"1.4.4"`, or the experimental `"2.0.0"`). See [Supported DuckDB Versions](#supported-duckdb-versions).
+- `duckdb_version`: DuckDB runtime version. Use `"latest"` (default) to always resolve to the most recent supported version, or pin to a specific one (e.g. `"2.0.0"`, `"1.5.2"`, `"1.4.4"`). See [Supported DuckDB Versions](#supported-duckdb-versions).
 
 **Input Sources:**
 - **Local Files**: CSV and Parquet files from local storage
@@ -125,13 +125,12 @@ Supported DuckDB Versions
 
 | Version | Status |
 |---------|--------|
-| `2.0.0` | Experimental — only used when pinned explicitly |
-| `1.5.2` | Current (`latest` resolves here) |
+| `2.0.0` | Current (`latest` resolves here) |
+| `1.5.2` | |
 | `1.4.4` | LTS |
 
 Each supported DuckDB version gets its own isolated venv built into the Docker image.
-The `latest` UI option resolves to the highest version in `SUPPORTED_VERSIONS` that is not in
-`EXPERIMENTAL_VERSIONS` (`src/versions.py`).
+The `latest` UI option resolves to the highest version in `SUPPORTED_VERSIONS` (`src/versions.py`).
 
 To add a new version, update these files in order:
 
@@ -152,8 +151,8 @@ conflicts = [
 ]
 ```
 
-**2. `src/versions.py`** — add the version to `SUPPORTED_VERSIONS` (order does not matter). Add it to
-`EXPERIMENTAL_VERSIONS` too if `latest` must not switch to it yet.
+**2. `src/versions.py`** — add the version to `SUPPORTED_VERSIONS` (order does not matter, the highest
+version becomes `latest`).
 
 **3. `Dockerfile`** — add a venv build step in the `base` stage:
 

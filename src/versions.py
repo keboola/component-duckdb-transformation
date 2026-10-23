@@ -4,7 +4,7 @@
 #   1. Add a [dependency-groups] entry in pyproject.toml: "duckdb-X.Y.Z" = ["duckdb==X.Y.Z"]
 #   2. Add it to the conflicts list in [tool.uv] in pyproject.toml
 #   3. Add a RUN block in Dockerfile (base stage)
-#   4. Add the version string here in SUPPORTED_VERSIONS (and EXPERIMENTAL_VERSIONS if it should not be "latest")
+#   4. Add the version string here in SUPPORTED_VERSIONS
 #   5. Run `uv lock` to update the lockfile
 #   6. CI pre-check will validate consistency automatically
 #
@@ -15,19 +15,14 @@ from packaging.version import Version
 VENV_BASE = "/code/.venvs"
 
 # Order does not matter — DEFAULT_VERSION is always derived as the
-# semantically highest non-experimental version using packaging.Version comparison.
+# semantically highest version using packaging.Version comparison.
 SUPPORTED_VERSIONS: set[str] = {
-    "2.0.0",  # experimental
+    "2.0.0",
     "1.5.2",
     "1.4.4",  # LTS
 }
 
-# Selectable only when pinned explicitly; never picked as DEFAULT_VERSION / "latest".
-EXPERIMENTAL_VERSIONS: set[str] = {
-    "2.0.0",
-}
-
-DEFAULT_VERSION = max(SUPPORTED_VERSIONS - EXPERIMENTAL_VERSIONS, key=Version)
+DEFAULT_VERSION = max(SUPPORTED_VERSIONS, key=Version)
 
 # "latest" is a UI alias that always resolves to DEFAULT_VERSION at runtime.
 # It is not in SUPPORTED_VERSIONS and is not tracked in the lockfile.
