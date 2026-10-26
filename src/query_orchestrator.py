@@ -132,9 +132,9 @@ def _create_parallel_batches_for_block(block_queries: list[Query]) -> list[Batch
     build -> adjust -> re-build under one name). Table identifiers are compared
     case-insensitively because DuckDB identifiers are case-insensitive.
 
-    Session statements (SET / SET VARIABLE / RESET) run before every other
-    query of the block except the producers of tables they read, because their
-    effect is not visible as a table dependency.
+    Session statements (SET / SET VARIABLE / RESET) keep their author position
+    relative to every other query of the block, because their effect is not
+    visible as a table dependency.
     """
     remaining = {q.name: q for q in block_queries}
     local_graph: dict[str, list[str]] = defaultdict(list)
@@ -183,23 +183,26 @@ def _create_parallel_batches_for_block(block_queries: list[Query]) -> list[Batch
                 # materialized version) instead of racing an earlier re-creation.
                 add_edge(producer_indices[-1], index)
 
-    # Session statements keep their author order among themselves, unless the table
-    # dependencies already force the opposite order. Adding the edge regardless would
-    # close a cycle and fail the whole block with a spurious "Circular dependency
-    # detected" error, so table correctness wins and the author order is dropped.
-    session_indices = [index for index, query in enumerate(block_queries) if query.is_session]
-    for earlier, later in zip(session_indices, session_indices[1:]):
-        if block_queries[later].name in _ancestors(block_queries[earlier].name, local_graph):
+    # Each session statement is a barrier in author order: queries written after it run
+    # after it, queries written before it run before it. So a variable set twice gives each
+    # reader the value set above it. Where table dependencies already force the opposite
+    # order, the barrier edge would close a cycle and fail the whole block with a spurious
+    # "Circular dependency detected" error, so table correctness wins and that edge is
+    # dropped. The edges to later queries are added first, so when the two sides conflict,
+    # the queries written after the statement still see it. Every other query ends up an
+    # ancestor or a descendant of the session statement, so it always runs alone in its batch.
+    for index, query in enumerate(block_queries):
+        if not query.is_session:
             continue
-        add_edge(earlier, later)
-
-    # Run each session statement before every query it does not itself depend on.
-    for index in session_indices:
-        ancestors = _ancestors(block_queries[index].name, local_graph)
-        for other in block_queries:
-            if other.name != block_queries[index].name and other.name not in ancestors:
-                local_graph[block_queries[index].name].append(other.name)
-                local_in_degree[other.name] += 1
+        ancestors = _ancestors(query.name, local_graph)
+        for later in range(index + 1, len(block_queries)):
+            if block_queries[later].name not in ancestors:
+                add_edge(index, later)
+        ancestors = _ancestors(query.name, local_graph)
+        for earlier in range(index):
+            earlier_name = block_queries[earlier].name
+            if earlier_name not in ancestors and query.name not in _ancestors(earlier_name, local_graph):
+                add_edge(earlier, index)
 
     batches: list[Batch] = []
     while remaining:

@@ -222,7 +222,7 @@ def test_session_statement_waits_for_tables_it_reads():
     ]
     plan = _plan_for(blocks)
     assert _batch_index(plan, "params") < _batch_index(plan, "set_var")
-    assert _batch_index(plan, "set_var") < _batch_index(plan, "unrelated")
+    assert _batch_index(plan, "unrelated") < _batch_index(plan, "set_var")
     assert _batch_index(plan, "set_var") < _batch_index(plan, "use_var")
 
 
@@ -239,6 +239,21 @@ def test_session_statement_between_reader_and_its_later_producer_is_not_a_cycle(
     ]
     order = _flat_order(_plan_for(blocks))
     assert order.index("set_tz") < order.index("producer") < order.index("reader")
+
+
+def test_session_statement_keeps_author_position_among_other_queries():
+    blocks = [
+        Block(
+            name="B",
+            codes=[
+                Code(name="before", script=["CREATE TABLE before_t AS SELECT 1 AS id"]),
+                Code(name="set_tz", script=["SET TimeZone = 'UTC'"]),
+                Code(name="after", script=["CREATE TABLE after_t AS SELECT 1 AS id"]),
+            ],
+        )
+    ]
+    batches = [[q.name for q in batch] for batch in _plan_for(blocks).blocks[0].batches]
+    assert batches == [["before"], ["set_tz"], ["after"]]
 
 
 def _run(blocks, threads=4):
@@ -334,6 +349,45 @@ def test_session_state_keeps_types_and_resets():
     assert connection.execute("SELECT * FROM out").fetchall() == [
         (True, "TIMESTAMP WITH TIME ZONE", ["a,b", None], True, "DATE", True)
     ]
+
+
+def test_variable_set_twice_gives_each_reader_the_value_set_above_it():
+    blocks = [
+        Block(
+            name="B",
+            codes=[
+                Code(
+                    name="code",
+                    script=[
+                        "SET VARIABLE x = 1",
+                        "CREATE TABLE r1 AS SELECT getvariable('x') AS v",
+                        "SET VARIABLE x = 2",
+                        "CREATE TABLE r2 AS SELECT getvariable('x') AS v",
+                    ],
+                )
+            ],
+        )
+    ]
+    connection = _run(blocks)
+    assert connection.execute("SELECT v FROM r1").fetchall() == [(1,)]
+    assert connection.execute("SELECT v FROM r2").fetchall() == [(2,)]
+
+
+def test_setting_does_not_apply_to_queries_written_before_it():
+    blocks = [
+        Block(
+            name="B",
+            codes=[
+                Code(name="before", script=["CREATE TABLE before_t AS SELECT current_setting('TimeZone') AS tz"]),
+                Code(name="set_tz", script=["SET TimeZone = 'America/New_York'"]),
+                Code(name="after", script=["CREATE TABLE after_t AS SELECT current_setting('TimeZone') AS tz"]),
+            ],
+        )
+    ]
+    connection = _run(blocks)
+    [(default_tz,)] = duckdb.connect().execute("SELECT current_setting('TimeZone')").fetchall()
+    assert connection.execute("SELECT tz FROM before_t").fetchall() == [(default_tz,)]
+    assert connection.execute("SELECT tz FROM after_t").fetchall() == [("America/New_York",)]
 
 
 def test_session_statement_order_does_not_create_false_cycle():
