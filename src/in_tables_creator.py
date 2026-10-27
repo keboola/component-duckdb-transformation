@@ -29,8 +29,12 @@ BASE_TYPE_TO_DUCKDB: dict[str, str] = {
     "TIMESTAMP": "TIMESTAMP",
 }
 DEFAULT_DUCKDB_TYPE = "VARCHAR"
+# Keboola's default precision/scale for NUMERIC, used when the manifest carries no length.
+DEFAULT_DECIMAL_TYPE = "DECIMAL(38,9)"
 # Accepts "38" or "38,9" only, so a manifest value can never reach SQL unchecked.
-DECIMAL_LENGTH_RE = re.compile(r"^\d+(,\d+)?$")
+DECIMAL_LENGTH_RE = re.compile(r"^(\d+)(?:,(\d+))?$")
+# DuckDB rejects a DECIMAL wider than 38 digits.
+MAX_DECIMAL_WIDTH = 38
 
 
 @dataclass
@@ -126,10 +130,13 @@ class LocalTableCreator:
         # manifest columns instead. (CSV is not affected: an empty table still gets a
         # header-only CSV file.)
         if not self._parquet_files_exist(path):
-            if not os.path.isdir(in_table.full_path):
-                # Not the empty-table case: keep failing loudly instead of silently
-                # producing a table with no rows.
-                raise UserException(f"No Parquet files found for input table {table_name} at {in_table.full_path}.")
+            if not self._input_is_empty(in_table):
+                # Not the empty-table case (for example a partial or failed staging):
+                # keep failing loudly instead of silently producing a table with no rows.
+                raise UserException(
+                    f"No Parquet files found for input table {table_name} at {in_table.full_path}, "
+                    f"but the table is not empty. The input data is incomplete, please run the job again."
+                )
             return self._create_empty_table_from_manifest(table_name, in_table, to_cast)
         if to_cast:
             return self._create_parquet_table_with_casting(table_name, path, to_cast)
@@ -142,9 +149,23 @@ class LocalTableCreator:
         Uses DuckDB's own glob() so the result matches exactly what read_parquet() sees
         (Python's glob, for example, skips hidden files that DuckDB would read).
         """
-        matched = self.connection.execute("SELECT count(*) FROM glob(?)", [str(path)]).fetchone()[0]
-        self.logger.debug(f"Files matching {path}: {matched}")
-        return matched > 0
+        matched = self.connection.execute("SELECT 1 FROM glob(?) LIMIT 1", [str(path)]).fetchone()
+        self.logger.debug(f"Files matching {path}: {matched is not None}")
+        return matched is not None
+
+    def _input_is_empty(self, in_table: TableDefinition) -> bool:
+        """Report whether the input table holds 0 rows and therefore has no data file.
+
+        The manifest row count is authoritative. Manifests that do not carry one fall back
+        to "the sliced folder exists but holds no Parquet file".
+        """
+        rows_count = getattr(in_table, "rows_count", None)
+        if rows_count is not None:
+            try:
+                return int(rows_count) == 0
+            except (TypeError, ValueError):
+                self.logger.warning(f"Manifest row count {rows_count!r} is not a number, ignoring it.")
+        return os.path.isdir(in_table.full_path)
 
     def _get_columns_to_cast(self, in_table: TableDefinition) -> list[str]:
         """Get list of columns that need to be cast to BIGINT."""
@@ -198,7 +219,7 @@ class LocalTableCreator:
             f"Input table {table_name} contains no Parquet files (the source table is empty). "
             f"Creating an empty table from the manifest columns: {list(columns)}"
         )
-        column_clause = ", ".join(f'"{name}" {dtype}' for name, dtype in columns.items())
+        column_clause = ", ".join(f'"{self._quote_identifier(name)}" {dtype}' for name, dtype in columns.items())
         self.connection.execute(f"CREATE OR REPLACE TABLE '{table_name}' ({column_clause})")
         return CreatedTable(name=table_name, is_view=False)
 
@@ -210,18 +231,38 @@ class LocalTableCreator:
             data_types = value.data_types if isinstance(value.data_types, dict) else {}
             base_type = data_types.get("base")
             dtype = base_type.dtype if base_type is not None else None
-            duckdb_type = BASE_TYPE_TO_DUCKDB.get(dtype, DEFAULT_DUCKDB_TYPE) if dtype else DEFAULT_DUCKDB_TYPE
+            duckdb_type = (
+                BASE_TYPE_TO_DUCKDB.get(str(dtype).upper(), DEFAULT_DUCKDB_TYPE) if dtype else DEFAULT_DUCKDB_TYPE
+            )
             if duckdb_type == "DECIMAL":
                 length = getattr(base_type, "length", None) if base_type is not None else None
                 if not length:
                     # Legacy manifests carry the length only in column_metadata.
                     length = column_metadata.get(name, {}).get("KBC.datatype.length")
-                if length and DECIMAL_LENGTH_RE.match(str(length)):
-                    duckdb_type = f"DECIMAL({length})"
+                duckdb_type = self._decimal_type(name, length)
             if name in to_cast:
                 duckdb_type = "BIGINT"
             columns[name] = duckdb_type
         return columns
+
+    def _decimal_type(self, column_name: str, length) -> str:
+        """Build a valid DuckDB DECIMAL type from the manifest length, or fall back."""
+        match = DECIMAL_LENGTH_RE.match(str(length)) if length else None
+        if match:
+            width = int(match.group(1))
+            scale = int(match.group(2)) if match.group(2) is not None else 0
+            if 1 <= width <= MAX_DECIMAL_WIDTH and scale <= width:
+                return f"DECIMAL({width},{scale})"
+            self.logger.warning(
+                f"Column {column_name} declares a length of {length} that DuckDB cannot represent. "
+                f"Using {DEFAULT_DECIMAL_TYPE}."
+            )
+        return DEFAULT_DECIMAL_TYPE
+
+    @staticmethod
+    def _quote_identifier(name: str) -> str:
+        """Escape a column name so it is safe inside a double-quoted SQL identifier."""
+        return name.replace('"', '""')
 
     def _create_view_from_csv(
         self, table_name: str, in_table: TableDefinition, path: str, dtype: dict | None
