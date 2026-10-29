@@ -9,6 +9,7 @@ from dataclasses import dataclass
 
 from keboola.component.exceptions import UserException
 
+from session_state import SessionState
 from sql_parser import SQLParser, StatementType
 
 
@@ -23,6 +24,7 @@ class Query:
     block_name: str  # Add block information
     code_name: str  # Add code information
     statement_type: StatementType = StatementType.OTHER
+    is_session: bool = False  # SET / SET VARIABLE / RESET
 
 
 @dataclass
@@ -101,6 +103,22 @@ class ExecutionStats:
         return sum(self.batch_times) / len(self.batch_times) if self.batch_times else 0.0
 
 
+def _ancestors(name: str, graph: dict[str, list[str]]) -> set[str]:
+    """Names of all queries that must run before ``name`` according to ``graph``."""
+    reverse: dict[str, set[str]] = defaultdict(set)
+    for src, destinations in graph.items():
+        for dst in destinations:
+            reverse[dst].add(src)
+    ancestors: set[str] = set()
+    pending = [name]
+    while pending:
+        for parent in reverse[pending.pop()]:
+            if parent not in ancestors:
+                ancestors.add(parent)
+                pending.append(parent)
+    return ancestors
+
+
 def _create_parallel_batches_for_block(block_queries: list[Query]) -> list[Batch]:
     """
     Create parallel batches for the queries of a single block using an
@@ -113,6 +131,10 @@ def _create_parallel_batches_for_block(block_queries: list[Query]) -> list[Batch
     dependency" when a block creates the same table more than once (e.g.
     build -> adjust -> re-build under one name). Table identifiers are compared
     case-insensitively because DuckDB identifiers are case-insensitive.
+
+    Session statements (SET / SET VARIABLE / RESET) keep their author position
+    relative to every other query of the block, because their effect is not
+    visible as a table dependency.
     """
     remaining = {q.name: q for q in block_queries}
     local_graph: dict[str, list[str]] = defaultdict(list)
@@ -161,6 +183,27 @@ def _create_parallel_batches_for_block(block_queries: list[Query]) -> list[Batch
                 # materialized version) instead of racing an earlier re-creation.
                 add_edge(producer_indices[-1], index)
 
+    # Each session statement is a barrier in author order: queries written after it run
+    # after it, queries written before it run before it. So a variable set twice gives each
+    # reader the value set above it. Where table dependencies already force the opposite
+    # order, the barrier edge would close a cycle and fail the whole block with a spurious
+    # "Circular dependency detected" error, so table correctness wins and that edge is
+    # dropped. The edges to later queries are added first, so when the two sides conflict,
+    # the queries written after the statement still see it. Every other query ends up an
+    # ancestor or a descendant of the session statement, so it always runs alone in its batch.
+    for index, query in enumerate(block_queries):
+        if not query.is_session:
+            continue
+        ancestors = _ancestors(query.name, local_graph)
+        for later in range(index + 1, len(block_queries)):
+            if block_queries[later].name not in ancestors:
+                add_edge(index, later)
+        ancestors = _ancestors(query.name, local_graph)
+        for earlier in range(index):
+            earlier_name = block_queries[earlier].name
+            if earlier_name not in ancestors and query.name not in _ancestors(earlier_name, local_graph):
+                add_edge(earlier, index)
+
     batches: list[Batch] = []
     while remaining:
         # Find queries with no remaining in-block dependencies.
@@ -198,6 +241,7 @@ class BlockOrchestrator:
         self.query_times: list[float] = []
         self.batch_times: list[float] = []
         self.sql_parser = SQLParser()
+        self.session_state = SessionState()
 
     def add_queries_from_blocks(self, blocks):
         """Add queries from Keboola blocks structure with block and code information."""
@@ -213,6 +257,7 @@ class BlockOrchestrator:
             # Use SQLParser to extract dependencies and outputs
             dependencies, outputs = self.sql_parser.extract_dependencies_and_outputs(sql)
             statement_type = self.sql_parser.classify_statement(sql)
+            is_session = self.sql_parser.is_session_statement(sql)
             return Query(
                 name=name,
                 sql=sql,
@@ -221,6 +266,7 @@ class BlockOrchestrator:
                 block_name=block_name,
                 code_name=code_name,
                 statement_type=statement_type,
+                is_session=is_session,
             )
         except Exception as e:
             # Fallback to empty sets if parsing fails
@@ -340,7 +386,11 @@ class BlockOrchestrator:
         # Using connection.execute() directly shares an internal cursor which is not thread-safe.
         cursor = self.connection.cursor()
         try:
+            # Each cursor is a separate DuckDB connection, so session state must be re-applied.
+            self.session_state.apply(cursor)
             cursor.execute(query.sql)
+            if query.is_session:
+                self.session_state = SessionState.capture(cursor, self.connection)
         finally:
             cursor.close()
         duration = time.time() - start
