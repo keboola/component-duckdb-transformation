@@ -296,16 +296,16 @@ wheels = [
 
 [[package]]
 name = "keboola-component"
-version = "1.11.0"
+version = "1.12.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "deprecated" },
     { name = "keboola-vcr" },
     { name = "pygelf" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/b4/8f/fb237bee1b04628fe73bae4eef9dabbeb6232f85bd0e2af8b2b44dd0eede/keboola_component-1.11.0.tar.gz", hash = "sha256:9489090aa31078bf1efce1cb7f0a9db1bff7fc0e1ea5d979ffd2944feaddcf9d", size = 72281, upload-time = "2026-06-30T12:40:32.92Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/cc/b9/02a24f21296fb429795f253bc4880e67b7b66f798035d3a1ebdbac5eb924/keboola_component-1.12.0.tar.gz", hash = "sha256:4ce464a23051596310b04454a9c402650d8f2cce79e028dc665f3aebd57698af", size = 74059, upload-time = "2026-10-27T14:17:06.592Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/43/11/da2c226f3f4980c26c041fddf7268d9d9d0bf9c5fdc78b27642796dd752a/keboola_component-1.11.0-py3-none-any.whl", hash = "sha256:76445867d7e53ce3e85bea3ecf48c2d74274d6ff91c94890bf1add62ae2ee22f", size = 44390, upload-time = "2026-06-30T12:40:31.862Z" },
+    { url = "https://files.pythonhosted.org/packages/51/38/d79306bc29f68444046789656b9dba0c055bedee02c0a11dcef2a62b2cf1/keboola_component-1.12.0-py3-none-any.whl", hash = "sha256:081011b36c465ce0d4d1c880a083e418e7e679974dea15136d57fd915139a20f", size = 45103, upload-time = "2026-10-27T14:17:05.179Z" },
 ]
 
 [[package]]
