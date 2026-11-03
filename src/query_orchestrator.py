@@ -126,8 +126,14 @@ def _add_barrier_edges(
         return False
 
     def add_acyclic_edge(src_index: int, dst_index: int) -> None:
-        if not reaches(block_queries[dst_index].name, block_queries[src_index].name):
-            add_edge(src_index, dst_index)
+        src, dst = block_queries[src_index].name, block_queries[dst_index].name
+        if reaches(dst, src):
+            logging.warning(
+                f"Query '{dst}' must run before '{src}' because of a table dependency, "
+                f"so it does not keep its script order."
+            )
+            return
+        add_edge(src_index, dst_index)
 
     code_indices: dict[str, list[int]] = defaultdict(list)
     for index, query in enumerate(block_queries):

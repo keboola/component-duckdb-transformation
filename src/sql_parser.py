@@ -2,6 +2,7 @@
 SQL parsing utilities for dependency analysis and query processing.
 """
 
+import functools
 import logging
 from enum import StrEnum
 
@@ -32,7 +33,13 @@ SESSION_STATEMENTS = (
     exp.Commit,
     exp.Rollback,
 )
-TABLE_CREATE_KINDS = {"TABLE", "VIEW"}
+TABLE_KINDS = {"TABLE", "VIEW"}
+
+
+@functools.lru_cache(maxsize=1024)
+def _parse_duckdb(sql: str) -> tuple[exp.Expression | None, ...]:
+    """Parse once per statement; each SQLParser method reads the same AST."""
+    return tuple(sqlglot.parse(sql, read="duckdb"))
 
 
 class SQLParser:
@@ -50,7 +57,7 @@ class SQLParser:
         misclassified as a CREATE.
         """
         try:
-            parsed = sqlglot.parse(sql, read="duckdb")
+            parsed = _parse_duckdb(sql)
         except Exception as e:
             self.logger.warning(f"Failed to parse SQL for classification: {e}")
             return StatementType.OTHER
@@ -70,14 +77,15 @@ class SQLParser:
         macros, schemas), or it cannot be parsed, so its dependencies are unknown.
         """
         try:
-            parsed = sqlglot.parse(sql, read="duckdb")
+            parsed = _parse_duckdb(sql)
         except Exception as e:
             self.logger.debug(f"Unparseable statement is ordered as a barrier: {e}")
             return True
         for statement in parsed:
             if isinstance(statement, SESSION_STATEMENTS):
                 return True
-            if isinstance(statement, exp.Create) and str(statement.args.get("kind")).upper() not in TABLE_CREATE_KINDS:
+            is_catalog_change = isinstance(statement, (exp.Create, exp.Drop))
+            if is_catalog_change and str(statement.args.get("kind")).upper() not in TABLE_KINDS:
                 return True
         return False
 
@@ -92,7 +100,7 @@ class SQLParser:
             Tuple of (dependencies, outputs) sets
         """
         try:
-            parsed = sqlglot.parse(sql, read="duckdb")
+            parsed = _parse_duckdb(sql)
             dependencies = set()
             outputs = set()
 

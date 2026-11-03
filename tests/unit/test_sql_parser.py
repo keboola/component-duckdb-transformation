@@ -42,6 +42,9 @@ def test_external_dependency_is_still_reported_with_original_case():
         "CREATE MACRO add_one(a) AS a + 1",
         "CREATE SCHEMA s1",
         "CREATE TYPE mood AS ENUM ('a', 'b')",
+        "DROP MACRO add_one",
+        "DROP SCHEMA s1 CASCADE",
+        "DROP SEQUENCE seq",
         "CALL dbgen(sf = 0.1)",
         "SELEC 1",
     ],
@@ -60,6 +63,8 @@ def test_session_and_unparseable_statements_are_order_barriers(sql):
         "INSERT INTO t VALUES (1)",
         "UPDATE t SET id = 2",
         "DELETE FROM t",
+        "DROP TABLE IF EXISTS t",
+        "DROP VIEW v",
         "COPY (SELECT 1) TO '/data/out/files/x.csv'",
     ],
 )
