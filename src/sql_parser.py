@@ -17,6 +17,24 @@ class StatementType(StrEnum):
     OTHER = "other"
 
 
+# Statements that change session or catalog state without reading or writing a
+# table, so dependency analysis gives them no edges (e.g. INSTALL httpfs / LOAD httpfs).
+# sqlglot parses LOAD, RESET, CALL and most CREATE SECRET forms as exp.Command.
+SESSION_STATEMENTS = (
+    exp.Install,
+    exp.Command,
+    exp.Set,
+    exp.Pragma,
+    exp.Use,
+    exp.Attach,
+    exp.Detach,
+    exp.Transaction,
+    exp.Commit,
+    exp.Rollback,
+)
+TABLE_CREATE_KINDS = {"TABLE", "VIEW"}
+
+
 class SQLParser:
     """Utility class for parsing SQL and extracting dependencies and outputs."""
 
@@ -44,6 +62,24 @@ class SQLParser:
             if isinstance(statement, exp.Create):
                 return StatementType.CREATE
         return StatementType.OTHER
+
+    def is_order_barrier(self, sql: str) -> bool:
+        """
+        True when the statement must run in script order within its code: it changes
+        session or catalog state (extensions, settings, attached databases, secrets,
+        macros, schemas), or it cannot be parsed, so its dependencies are unknown.
+        """
+        try:
+            parsed = sqlglot.parse(sql, read="duckdb")
+        except Exception as e:
+            self.logger.debug(f"Unparseable statement is ordered as a barrier: {e}")
+            return True
+        for statement in parsed:
+            if isinstance(statement, SESSION_STATEMENTS):
+                return True
+            if isinstance(statement, exp.Create) and str(statement.args.get("kind")).upper() not in TABLE_CREATE_KINDS:
+                return True
+        return False
 
     def extract_dependencies_and_outputs(self, sql: str) -> tuple[set[str], set[str]]:
         """

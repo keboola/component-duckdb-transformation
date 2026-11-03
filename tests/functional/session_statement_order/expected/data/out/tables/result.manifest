@@ -1,0 +1,1 @@
+{"destination": "out.c-out.result", "incremental": false, "write_always": false, "delimiter": ",", "enclosure": "\"", "manifest_type": "out", "has_header": true, "schema": [{"name": "status", "data_type": {"base": {"type": "STRING"}}, "nullable": true}]}
