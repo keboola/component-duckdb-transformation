@@ -2,6 +2,7 @@
 SQL parsing utilities for dependency analysis and query processing.
 """
 
+import functools
 import logging
 from enum import StrEnum
 
@@ -15,6 +16,30 @@ class StatementType(StrEnum):
     CREATE = "create"
     INSERT = "insert"
     OTHER = "other"
+
+
+# Statements that change session or catalog state without reading or writing a
+# table, so dependency analysis gives them no edges (e.g. INSTALL httpfs / LOAD httpfs).
+# sqlglot parses LOAD, RESET, CALL and most CREATE SECRET forms as exp.Command.
+SESSION_STATEMENTS = (
+    exp.Install,
+    exp.Command,
+    exp.Set,
+    exp.Pragma,
+    exp.Use,
+    exp.Attach,
+    exp.Detach,
+    exp.Transaction,
+    exp.Commit,
+    exp.Rollback,
+)
+TABLE_KINDS = {"TABLE", "VIEW"}
+
+
+@functools.lru_cache(maxsize=1024)
+def _parse_duckdb(sql: str) -> tuple[exp.Expression | None, ...]:
+    """Parse once per statement; each SQLParser method reads the same AST."""
+    return tuple(sqlglot.parse(sql, read="duckdb"))
 
 
 class SQLParser:
@@ -32,7 +57,7 @@ class SQLParser:
         misclassified as a CREATE.
         """
         try:
-            parsed = sqlglot.parse(sql, read="duckdb")
+            parsed = _parse_duckdb(sql)
         except Exception as e:
             self.logger.warning(f"Failed to parse SQL for classification: {e}")
             return StatementType.OTHER
@@ -45,6 +70,25 @@ class SQLParser:
                 return StatementType.CREATE
         return StatementType.OTHER
 
+    def is_order_barrier(self, sql: str) -> bool:
+        """
+        True when the statement must run in script order within its code: it changes
+        session or catalog state (extensions, settings, attached databases, secrets,
+        macros, schemas), or it cannot be parsed, so its dependencies are unknown.
+        """
+        try:
+            parsed = _parse_duckdb(sql)
+        except Exception as e:
+            self.logger.debug(f"Unparseable statement is ordered as a barrier: {e}")
+            return True
+        for statement in parsed:
+            if isinstance(statement, SESSION_STATEMENTS):
+                return True
+            is_catalog_change = isinstance(statement, (exp.Create, exp.Drop))
+            if is_catalog_change and str(statement.args.get("kind")).upper() not in TABLE_KINDS:
+                return True
+        return False
+
     def extract_dependencies_and_outputs(self, sql: str) -> tuple[set[str], set[str]]:
         """
         Extract table dependencies and outputs from SQL query.
@@ -56,7 +100,7 @@ class SQLParser:
             Tuple of (dependencies, outputs) sets
         """
         try:
-            parsed = sqlglot.parse(sql, read="duckdb")
+            parsed = _parse_duckdb(sql)
             dependencies = set()
             outputs = set()
 

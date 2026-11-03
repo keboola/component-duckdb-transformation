@@ -4,6 +4,7 @@ import logging
 import threading
 import time
 from collections import defaultdict
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 
@@ -23,6 +24,7 @@ class Query:
     block_name: str  # Add block information
     code_name: str  # Add code information
     statement_type: StatementType = StatementType.OTHER
+    is_barrier: bool = False  # runs in script order within its code
 
 
 @dataclass
@@ -101,6 +103,52 @@ class ExecutionStats:
         return sum(self.batch_times) / len(self.batch_times) if self.batch_times else 0.0
 
 
+def _add_barrier_edges(
+    block_queries: list[Query],
+    graph: dict[str, list[str]],
+    add_edge: Callable[[int, int], None],
+) -> None:
+    """
+    Order each barrier query after the earlier statements of its own code and before
+    the later ones. Codes of a block stay parallel. An edge that would close a cycle
+    with an existing table dependency is skipped, so the table dependency wins.
+    """
+
+    def reaches(src: str, dst: str) -> bool:
+        stack, seen = [src], set()
+        while stack:
+            node = stack.pop()
+            if node == dst:
+                return True
+            if node not in seen:
+                seen.add(node)
+                stack.extend(graph[node])
+        return False
+
+    def add_acyclic_edge(src_index: int, dst_index: int) -> None:
+        src, dst = block_queries[src_index].name, block_queries[dst_index].name
+        if reaches(dst, src):
+            logging.warning(
+                f"Query '{dst}' must run before '{src}' because of a table dependency, "
+                f"so it does not keep its script order."
+            )
+            return
+        add_edge(src_index, dst_index)
+
+    code_indices: dict[str, list[int]] = defaultdict(list)
+    for index, query in enumerate(block_queries):
+        code_indices[query.code_name].append(index)
+
+    for indices in code_indices.values():
+        for position, barrier in enumerate(indices):
+            if not block_queries[barrier].is_barrier:
+                continue
+            for earlier in indices[:position]:
+                add_acyclic_edge(earlier, barrier)
+            for later in indices[position + 1 :]:
+                add_acyclic_edge(barrier, later)
+
+
 def _create_parallel_batches_for_block(block_queries: list[Query]) -> list[Batch]:
     """
     Create parallel batches for the queries of a single block using an
@@ -160,6 +208,8 @@ def _create_parallel_batches_for_block(block_queries: list[Query]) -> list[Batch
                 # last producer so it waits until the table is fully built (its final
                 # materialized version) instead of racing an earlier re-creation.
                 add_edge(producer_indices[-1], index)
+
+    _add_barrier_edges(block_queries, local_graph, add_edge)
 
     batches: list[Batch] = []
     while remaining:
@@ -221,6 +271,7 @@ class BlockOrchestrator:
                 block_name=block_name,
                 code_name=code_name,
                 statement_type=statement_type,
+                is_barrier=self.sql_parser.is_order_barrier(sql),
             )
         except Exception as e:
             # Fallback to empty sets if parsing fails
@@ -233,6 +284,7 @@ class BlockOrchestrator:
                 block_name=block_name,
                 code_name=code_name,
                 statement_type=StatementType.OTHER,
+                is_barrier=True,
             )
 
     def build_block_execution_plan(self) -> ExecutionPlan:

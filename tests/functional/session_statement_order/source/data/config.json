@@ -1,0 +1,32 @@
+{
+  "parameters": {
+    "blocks": [
+      {
+        "name": "Block 1",
+        "codes": [
+          {
+            "name": "attach and use",
+            "script": [
+              "ATTACH ':memory:' AS scratch;",
+              "CREATE TABLE scratch.seed AS SELECT 'ok' AS status;",
+              "CREATE TABLE result AS SELECT status FROM scratch.seed;"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "storage": {
+    "output": {
+      "tables": [
+        {
+          "destination": "out.c-out.result",
+          "source": "result"
+        }
+      ]
+    },
+    "input": {
+      "tables": []
+    }
+  }
+}

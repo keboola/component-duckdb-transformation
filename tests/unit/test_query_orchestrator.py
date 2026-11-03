@@ -182,3 +182,85 @@ def test_reader_between_producers_runs_before_the_recreation():
     # alongside it.
     assert _batch_index(plan, "create_t") < _batch_index(plan, "read_t")
     assert _batch_index(plan, "read_t") < _batch_index(plan, "recreate_t")
+
+
+def test_install_and_load_in_one_code_run_in_script_order():
+    # Statements of one code are split into separate queries. INSTALL and LOAD
+    # touch no tables, so without explicit ordering they land in one parallel
+    # batch and LOAD can run before INSTALL has downloaded the extension.
+    blocks = [
+        Block(
+            name="B",
+            codes=[
+                Code(
+                    name="ext",
+                    script=[
+                        "INSTALL httpfs;",
+                        "LOAD httpfs;",
+                        "CREATE TABLE a AS SELECT 1 AS id;",
+                        "CREATE TABLE b AS SELECT 2 AS id;",
+                    ],
+                )
+            ],
+        )
+    ]
+    plan = _plan_for(blocks)
+    assert _batch_index(plan, "ext_0") < _batch_index(plan, "ext_1")
+    assert _batch_index(plan, "ext_1") < _batch_index(plan, "ext_2")
+    assert _batch_index(plan, "ext_2") == _batch_index(plan, "ext_3")
+
+
+def test_barrier_waits_for_earlier_statements_of_its_code():
+    blocks = [
+        Block(
+            name="B",
+            codes=[
+                Code(
+                    name="code",
+                    script=[
+                        "CREATE TABLE a AS SELECT 1 AS id;",
+                        "ATTACH ':memory:' AS db2;",
+                        "CREATE TABLE db2.c AS SELECT 3 AS id;",
+                    ],
+                )
+            ],
+        )
+    ]
+    plan = _plan_for(blocks)
+    assert _batch_index(plan, "code_0") < _batch_index(plan, "code_1") < _batch_index(plan, "code_2")
+
+
+def test_barrier_does_not_serialize_other_codes_of_the_block():
+    blocks = [
+        Block(
+            name="B",
+            codes=[
+                Code(name="ext", script=["INSTALL httpfs;", "LOAD httpfs;"]),
+                Code(name="other", script=["CREATE TABLE c AS SELECT 1 AS id"]),
+            ],
+        )
+    ]
+    plan = _plan_for(blocks)
+    assert _batch_index(plan, "other") == _batch_index(plan, "ext_0")
+
+
+def test_barrier_between_reader_and_later_producer_is_not_a_cycle():
+    # The reader is bound after the later producer (existing behaviour). A
+    # barrier between them must not add the opposite edge and close a cycle.
+    blocks = [
+        Block(
+            name="B",
+            codes=[
+                Code(
+                    name="code",
+                    script=[
+                        "CREATE TABLE report AS SELECT * FROM x;",
+                        "SET threads = 2;",
+                        "CREATE TABLE x AS SELECT 1 AS id;",
+                    ],
+                )
+            ],
+        )
+    ]
+    plan = _plan_for(blocks)  # must not raise
+    assert _batch_index(plan, "code_2") < _batch_index(plan, "code_0")
