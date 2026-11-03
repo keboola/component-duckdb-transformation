@@ -1,5 +1,6 @@
 {
   "parameters": {
+    "duckdb_version": "1.5.2",
     "debug": "true",
     "blocks": [
       {

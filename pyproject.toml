@@ -26,6 +26,7 @@ dev = [
 ]
 "duckdb-1.5.2" = ["duckdb==1.5.2"]
 "duckdb-1.4.4" = ["duckdb==1.4.4"]
+"duckdb-2.0.0" = ["duckdb==2.0.0"]
 
 [tool.uv]
 default-groups = ["dev", "duckdb-1.5.2"]
@@ -33,6 +34,7 @@ conflicts = [
     [
         { group = "duckdb-1.5.2" },
         { group = "duckdb-1.4.4" },
+        { group = "duckdb-2.0.0" },
     ],
 ]
 
