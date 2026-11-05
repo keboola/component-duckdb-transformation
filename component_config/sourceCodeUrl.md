@@ -1,1 +1,1 @@
-https://github.com/component-duckdb-transformation.git
+https://github.com/keboola/component-duckdb-transformation

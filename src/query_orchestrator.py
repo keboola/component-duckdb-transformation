@@ -4,6 +4,7 @@ import logging
 import threading
 import time
 from collections import defaultdict
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 
@@ -24,7 +25,8 @@ class Query:
     block_name: str  # Add block information
     code_name: str  # Add code information
     statement_type: StatementType = StatementType.OTHER
-    is_session: bool = False  # SET / SET VARIABLE / RESET
+    is_barrier: bool = False  # runs in script order within its code
+    is_session: bool = False  # SET / SET VARIABLE / RESET: runs in script order within its block
 
 
 @dataclass
@@ -103,20 +105,68 @@ class ExecutionStats:
         return sum(self.batch_times) / len(self.batch_times) if self.batch_times else 0.0
 
 
-def _ancestors(name: str, graph: dict[str, list[str]]) -> set[str]:
-    """Names of all queries that must run before ``name`` according to ``graph``."""
-    reverse: dict[str, set[str]] = defaultdict(set)
-    for src, destinations in graph.items():
-        for dst in destinations:
-            reverse[dst].add(src)
-    ancestors: set[str] = set()
-    pending = [name]
-    while pending:
-        for parent in reverse[pending.pop()]:
-            if parent not in ancestors:
-                ancestors.add(parent)
-                pending.append(parent)
-    return ancestors
+def _add_barrier_edges(
+    block_queries: list[Query],
+    graph: dict[str, list[str]],
+    add_edge: Callable[[int, int], None],
+) -> None:
+    """
+    Order each barrier query after the earlier statements of its own code and before
+    the later ones. Codes of a block stay parallel. An edge that would close a cycle
+    with an existing table dependency is skipped, so the table dependency wins.
+
+    Session statements (SET / SET VARIABLE / RESET) are ordered the same way against
+    every query of the block, not only their code: their state is passed on to all
+    queries that run after them, so a query written before a SET must not see it and a
+    query written after it must. Every other query of the block then runs before or
+    after a session statement, so it always runs alone in its batch, which
+    ``SessionState.capture`` relies on.
+    """
+
+    def reaches(src: str, dst: str) -> bool:
+        stack, seen = [src], set()
+        while stack:
+            node = stack.pop()
+            if node == dst:
+                return True
+            if node not in seen:
+                seen.add(node)
+                stack.extend(graph[node])
+        return False
+
+    def add_acyclic_edge(src_index: int, dst_index: int) -> None:
+        src, dst = block_queries[src_index].name, block_queries[dst_index].name
+        if reaches(dst, src):
+            logging.warning(
+                f"Query '{dst}' must run before '{src}' because of a table dependency, "
+                f"so it does not keep its script order."
+            )
+            return
+        add_edge(src_index, dst_index)
+
+    code_indices: dict[str, list[int]] = defaultdict(list)
+    for index, query in enumerate(block_queries):
+        code_indices[query.code_name].append(index)
+
+    for indices in code_indices.values():
+        for position, barrier in enumerate(indices):
+            query = block_queries[barrier]
+            if not query.is_barrier or query.is_session:
+                continue
+            for earlier in indices[:position]:
+                add_acyclic_edge(earlier, barrier)
+            for later in indices[position + 1 :]:
+                add_acyclic_edge(barrier, later)
+
+    # Edges to later queries go first, so where table order conflicts with script order,
+    # the queries written after a SET still see it.
+    for index, query in enumerate(block_queries):
+        if not query.is_session:
+            continue
+        for later in range(index + 1, len(block_queries)):
+            add_acyclic_edge(index, later)
+        for earlier in range(index):
+            add_acyclic_edge(earlier, index)
 
 
 def _create_parallel_batches_for_block(block_queries: list[Query]) -> list[Batch]:
@@ -131,10 +181,6 @@ def _create_parallel_batches_for_block(block_queries: list[Query]) -> list[Batch
     dependency" when a block creates the same table more than once (e.g.
     build -> adjust -> re-build under one name). Table identifiers are compared
     case-insensitively because DuckDB identifiers are case-insensitive.
-
-    Session statements (SET / SET VARIABLE / RESET) keep their author position
-    relative to every other query of the block, because their effect is not
-    visible as a table dependency.
     """
     remaining = {q.name: q for q in block_queries}
     local_graph: dict[str, list[str]] = defaultdict(list)
@@ -183,26 +229,7 @@ def _create_parallel_batches_for_block(block_queries: list[Query]) -> list[Batch
                 # materialized version) instead of racing an earlier re-creation.
                 add_edge(producer_indices[-1], index)
 
-    # Each session statement is a barrier in author order: queries written after it run
-    # after it, queries written before it run before it. So a variable set twice gives each
-    # reader the value set above it. Where table dependencies already force the opposite
-    # order, the barrier edge would close a cycle and fail the whole block with a spurious
-    # "Circular dependency detected" error, so table correctness wins and that edge is
-    # dropped. The edges to later queries are added first, so when the two sides conflict,
-    # the queries written after the statement still see it. Every other query ends up an
-    # ancestor or a descendant of the session statement, so it always runs alone in its batch.
-    for index, query in enumerate(block_queries):
-        if not query.is_session:
-            continue
-        ancestors = _ancestors(query.name, local_graph)
-        for later in range(index + 1, len(block_queries)):
-            if block_queries[later].name not in ancestors:
-                add_edge(index, later)
-        ancestors = _ancestors(query.name, local_graph)
-        for earlier in range(index):
-            earlier_name = block_queries[earlier].name
-            if earlier_name not in ancestors and query.name not in _ancestors(earlier_name, local_graph):
-                add_edge(earlier, index)
+    _add_barrier_edges(block_queries, local_graph, add_edge)
 
     batches: list[Batch] = []
     while remaining:
@@ -257,7 +284,6 @@ class BlockOrchestrator:
             # Use SQLParser to extract dependencies and outputs
             dependencies, outputs = self.sql_parser.extract_dependencies_and_outputs(sql)
             statement_type = self.sql_parser.classify_statement(sql)
-            is_session = self.sql_parser.is_session_statement(sql)
             return Query(
                 name=name,
                 sql=sql,
@@ -266,7 +292,8 @@ class BlockOrchestrator:
                 block_name=block_name,
                 code_name=code_name,
                 statement_type=statement_type,
-                is_session=is_session,
+                is_barrier=self.sql_parser.is_order_barrier(sql),
+                is_session=self.sql_parser.is_session_statement(sql),
             )
         except Exception as e:
             # Fallback to empty sets if parsing fails
@@ -279,6 +306,7 @@ class BlockOrchestrator:
                 block_name=block_name,
                 code_name=code_name,
                 statement_type=StatementType.OTHER,
+                is_barrier=True,
             )
 
     def build_block_execution_plan(self) -> ExecutionPlan:

@@ -5,13 +5,17 @@ ARG VENV_BASE=/code/.venvs
 WORKDIR /code/
 COPY pyproject.toml uv.lock ./
 
-# Current version venv — runtime deps + duckdb 1.5.2, no dev tools
+# Venv — runtime deps + duckdb 1.5.2, no dev tools
 RUN UV_PROJECT_ENVIRONMENT=$VENV_BASE/duckdb-1.5.2 \
     uv sync --no-group dev --frozen
 
 # LTS venv — runtime deps + duckdb 1.4.4, no dev tools
 RUN UV_PROJECT_ENVIRONMENT=$VENV_BASE/duckdb-1.4.4 \
     uv sync --group duckdb-1.4.4 --no-group dev --no-group duckdb-1.5.2 --frozen
+
+# Current version venv — runtime deps + duckdb 2.0.0, no dev tools
+RUN UV_PROJECT_ENVIRONMENT=$VENV_BASE/duckdb-2.0.0 \
+    uv sync --group duckdb-2.0.0 --no-group dev --no-group duckdb-1.5.2 --frozen
 
 COPY src/ src/
 
