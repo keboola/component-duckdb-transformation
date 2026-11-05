@@ -8,6 +8,7 @@ DuckDB SQL transformation component for Keboola platform with block-based orches
 - **Parallel Scripts**: Scripts within each block run in parallel when dependencies allow
 - **Automatic DAG**: Component creates its own dependency graph based on SQL analysis
 - **Ordered Session Statements**: Statements that change session state (`INSTALL`, `LOAD`, `SET`, `ATTACH`, `CREATE SECRET`, `CREATE MACRO`, `DROP MACRO`, …) and statements the parser cannot read run in script order within their code. Other codes in the block stay parallel, so put shared setup such as `INSTALL httpfs; LOAD httpfs;` in an earlier block
+- **Session State**: `SET`, `SET VARIABLE` and `RESET` apply to all statements written after them, in the same block and in later blocks. Within a block they run alone, after the statements written above them in any code and before the statements written below them
 - **SQLGlot Integration**: Advanced SQL parsing and dependency detection
 - **Performance Optimization**: Parallel execution with configurable thread limits
 - **System Resource Detection**: Automatic detection of CPU and memory limits for optimal DuckDB settings

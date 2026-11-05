@@ -70,3 +70,31 @@ def test_session_and_unparseable_statements_are_order_barriers(sql):
 )
 def test_table_statements_are_not_order_barriers(sql):
     assert not SQLParser().is_order_barrier(sql)
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "SET VARIABLE snapshot_date = DATE '2026-10-20'",
+        "SET TimeZone = 'UTC'",
+        "SET SESSION TimeZone = 'UTC'",
+        "SET GLOBAL TimeZone = 'UTC'",
+        "-- comment\nset variable x = 1",
+        "RESET VARIABLE x",
+        "reset TimeZone",
+    ],
+)
+def test_session_statements_are_detected(sql):
+    assert SQLParser().is_session_statement(sql)
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "CREATE TABLE t AS SELECT getvariable('x') AS x",
+        "UPDATE t SET v = 1",
+        "SELECT current_setting('TimeZone')",
+    ],
+)
+def test_other_statements_are_not_session_statements(sql):
+    assert not SQLParser().is_session_statement(sql)

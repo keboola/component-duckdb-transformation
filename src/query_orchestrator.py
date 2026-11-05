@@ -10,6 +10,7 @@ from dataclasses import dataclass
 
 from keboola.component.exceptions import UserException
 
+from session_state import SessionState
 from sql_parser import SQLParser, StatementType
 
 
@@ -25,6 +26,7 @@ class Query:
     code_name: str  # Add code information
     statement_type: StatementType = StatementType.OTHER
     is_barrier: bool = False  # runs in script order within its code
+    is_session: bool = False  # SET / SET VARIABLE / RESET: runs in script order within its block
 
 
 @dataclass
@@ -112,6 +114,13 @@ def _add_barrier_edges(
     Order each barrier query after the earlier statements of its own code and before
     the later ones. Codes of a block stay parallel. An edge that would close a cycle
     with an existing table dependency is skipped, so the table dependency wins.
+
+    Session statements (SET / SET VARIABLE / RESET) are ordered the same way against
+    every query of the block, not only their code: their state is passed on to all
+    queries that run after them, so a query written before a SET must not see it and a
+    query written after it must. Every other query of the block then runs before or
+    after a session statement, so it always runs alone in its batch, which
+    ``SessionState.capture`` relies on.
     """
 
     def reaches(src: str, dst: str) -> bool:
@@ -141,12 +150,23 @@ def _add_barrier_edges(
 
     for indices in code_indices.values():
         for position, barrier in enumerate(indices):
-            if not block_queries[barrier].is_barrier:
+            query = block_queries[barrier]
+            if not query.is_barrier or query.is_session:
                 continue
             for earlier in indices[:position]:
                 add_acyclic_edge(earlier, barrier)
             for later in indices[position + 1 :]:
                 add_acyclic_edge(barrier, later)
+
+    # Edges to later queries go first, so where table order conflicts with script order,
+    # the queries written after a SET still see it.
+    for index, query in enumerate(block_queries):
+        if not query.is_session:
+            continue
+        for later in range(index + 1, len(block_queries)):
+            add_acyclic_edge(index, later)
+        for earlier in range(index):
+            add_acyclic_edge(earlier, index)
 
 
 def _create_parallel_batches_for_block(block_queries: list[Query]) -> list[Batch]:
@@ -248,6 +268,7 @@ class BlockOrchestrator:
         self.query_times: list[float] = []
         self.batch_times: list[float] = []
         self.sql_parser = SQLParser()
+        self.session_state = SessionState()
 
     def add_queries_from_blocks(self, blocks):
         """Add queries from Keboola blocks structure with block and code information."""
@@ -272,6 +293,7 @@ class BlockOrchestrator:
                 code_name=code_name,
                 statement_type=statement_type,
                 is_barrier=self.sql_parser.is_order_barrier(sql),
+                is_session=self.sql_parser.is_session_statement(sql),
             )
         except Exception as e:
             # Fallback to empty sets if parsing fails
@@ -392,7 +414,11 @@ class BlockOrchestrator:
         # Using connection.execute() directly shares an internal cursor which is not thread-safe.
         cursor = self.connection.cursor()
         try:
+            # Each cursor is a separate DuckDB connection, so session state must be re-applied.
+            self.session_state.apply(cursor)
             cursor.execute(query.sql)
+            if query.is_session:
+                self.session_state = SessionState.capture(cursor, self.connection)
         finally:
             cursor.close()
         duration = time.time() - start

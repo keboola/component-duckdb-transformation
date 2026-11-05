@@ -89,6 +89,23 @@ class SQLParser:
                 return True
         return False
 
+    def is_session_statement(self, sql: str) -> bool:
+        """
+        True for `SET`, `SET VARIABLE` and `RESET`: they change connection-scoped state that
+        later statements rely on but never reference as a table.
+        """
+        try:
+            parsed = _parse_duckdb(sql)
+        except Exception as e:
+            self.logger.debug(f"Unparseable statement is not treated as a session statement: {e}")
+            return False
+        return any(
+            isinstance(statement, exp.Set)
+            or (isinstance(statement, exp.Command) and str(statement.this).upper() == "RESET")
+            for statement in parsed
+            if statement is not None
+        )
+
     def extract_dependencies_and_outputs(self, sql: str) -> tuple[set[str], set[str]]:
         """
         Extract table dependencies and outputs from SQL query.
